@@ -1,0 +1,21 @@
+{
+  "name": "argus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Agent Runtime Governance & Observability Platform",
+  "scripts": {
+    "dev:ingestion": "pnpm --filter @argus/ingestion dev",
+    "dev:api": "pnpm --filter @argus/api dev",
+    "dev:dashboard": "pnpm --filter @argus/dashboard dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

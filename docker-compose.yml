@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  # PostgreSQL — event storage
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: argus
+      POSTGRES_USER: argus
+      POSTGRES_PASSWORD: argus_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U argus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis — real-time state and caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Tetragon — eBPF-based runtime security observability
+  # Runs privileged to access the kernel's eBPF subsystem
+  tetragon:
+    image: quay.io/cilium/tetragon:v1.1.2
+    privileged: true
+    pid: host
+    volumes:
+      - /sys/kernel:/sys/kernel
+      - tetragon-export:/var/run/tetragon
+    command:
+      - tetragon
+      - --export-filename=/var/run/tetragon/tetragon.log
+
+volumes:
+  pgdata:
+  tetragon-export:

@@ -1,0 +1,52 @@
+export interface TetragonEvent {
+  process_exec?: ProcessExecEvent;
+  process_exit?: ProcessExitEvent;
+  process_kprobe?: KprobeEvent;
+  node_name: string;
+  time: string;
+}
+
+export interface ProcessExecEvent {
+  process: ProcessInfo;
+  parent?: ProcessInfo;
+}
+
+export interface ProcessExitEvent {
+  process: ProcessInfo;
+  parent?: ProcessInfo;
+  signal?: string;
+  status?: number;
+}
+
+export interface KprobeEvent {
+  process: ProcessInfo;
+  parent?: ProcessInfo;
+  function_name: string;
+  args?: KprobeArg[];
+}
+
+export interface ProcessInfo {
+  exec_id: string;
+  pid: number;
+  uid: number;
+  cwd: string;
+  binary: string;
+  arguments?: string;
+  start_time: string;
+}
+
+export interface KprobeArg {
+  string_arg?: string;
+  int_arg?: number;
+  file_arg?: { path: string };
+}
+
+export interface StoredEvent {
+  id: number;
+  event_type: string;
+  process_binary: string;
+  process_pid: number;
+  function_name: string | null;
+  raw_event: TetragonEvent;
+  created_at: Date;
+}
