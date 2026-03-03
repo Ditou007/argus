@@ -36,9 +36,12 @@ services:
     volumes:
       - /sys/kernel:/sys/kernel
       - ./data/tetragon:/var/run/tetragon
+      - ./policies:/etc/tetragon/tetragon.tp.d
     command:
       - tetragon
       - --export-filename=/var/run/tetragon/tetragon.log
+      - --tracing-policy-dir=/etc/tetragon/tetragon.tp.d
+      - --export-denylist={"binary_regex":["runc","containerd","dockerd","pg_isready","redis-cli"]}
 
 volumes:
   pgdata:

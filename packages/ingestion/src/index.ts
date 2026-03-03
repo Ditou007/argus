@@ -1,6 +1,10 @@
 import { createWatcher } from "./tetragon-watcher.js";
 import { createEventStore } from "./event-store.js";
+import { shouldIngest } from "./event-filter.js";
 import { config } from "./config.js";
+
+let ingested = 0;
+let filtered = 0;
 
 const main = async () => {
   console.log("🔍 Argus Ingestion Service starting...");
@@ -11,7 +15,16 @@ const main = async () => {
   const watcher = createWatcher({
     exportPath: config.tetragon.exportPath,
     onEvent: async (event) => {
-      await store.insert(event);
+      if (shouldIngest(event)) {
+        await store.insert(event);
+        ingested++;
+      } else {
+        filtered++;
+      }
+
+      if ((ingested + filtered) % 100 === 0) {
+        console.log(`📊 Ingested: ${ingested} | Filtered out: ${filtered}`);
+      }
     },
   });
 

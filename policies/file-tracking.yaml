@@ -1,0 +1,40 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "file-tracking"
+spec:
+  kprobes:
+    - call: "fd_install"
+      syscall: false
+      args:
+        - index: 0
+          type: int
+        - index: 1
+          type: "file"
+      selectors:
+        - matchBinaries:
+            - operator: "In"
+              values:
+                - "/usr/local/bin/python"
+                - "/usr/local/bin/python3"
+                - "/usr/bin/python"
+                - "/usr/bin/python3"
+                - "/usr/bin/node"
+                - "/usr/local/bin/node"
+    - call: "sys_write"
+      syscall: true
+      args:
+        - index: 0
+          type: "fd"
+        - index: 2
+          type: "size_t"
+      selectors:
+        - matchBinaries:
+            - operator: "In"
+              values:
+                - "/usr/local/bin/python"
+                - "/usr/local/bin/python3"
+                - "/usr/bin/python"
+                - "/usr/bin/python3"
+                - "/usr/bin/node"
+                - "/usr/local/bin/node"
