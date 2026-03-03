@@ -9,15 +9,24 @@ interface DBConfig {
   password: string;
 }
 
-export class EventStore {
-  private pool: pg.Pool;
+const getEventType = (event: TetragonEvent): string => {
+  if (event.process_exec) return "process_exec";
+  if (event.process_exit) return "process_exit";
+  if (event.process_kprobe) return "process_kprobe";
+  return "unknown";
+};
 
-  constructor(config: DBConfig) {
-    this.pool = new pg.Pool(config);
-  }
+const getProcess = (event: TetragonEvent) =>
+  event.process_exec?.process ??
+  event.process_exit?.process ??
+  event.process_kprobe?.process ??
+  null;
 
-  async initialize() {
-    await this.pool.query(`
+export const createEventStore = (dbConfig: DBConfig) => {
+  const pool = new pg.Pool(dbConfig);
+
+  const initialize = async () => {
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
         event_type VARCHAR(50) NOT NULL,
@@ -34,42 +43,28 @@ export class EventStore {
     `);
 
     console.log("📦 Database initialized");
-  }
+  };
 
-  async insert(event: TetragonEvent) {
-    const eventType = this.getEventType(event);
-    const process = this.getProcess(event);
+  const insert = async (event: TetragonEvent) => {
+    const eventType = getEventType(event);
+    const proc = getProcess(event);
 
-    await this.pool.query(
+    await pool.query(
       `INSERT INTO events (event_type, process_binary, process_pid, function_name, raw_event)
        VALUES ($1, $2, $3, $4, $5)`,
       [
         eventType,
-        process?.binary ?? null,
-        process?.pid ?? null,
+        proc?.binary ?? null,
+        proc?.pid ?? null,
         event.process_kprobe?.function_name ?? null,
         JSON.stringify(event),
       ]
     );
-  }
+  };
 
-  async close() {
-    await this.pool.end();
-  }
+  const close = async () => {
+    await pool.end();
+  };
 
-  private getEventType(event: TetragonEvent): string {
-    if (event.process_exec) return "process_exec";
-    if (event.process_exit) return "process_exit";
-    if (event.process_kprobe) return "process_kprobe";
-    return "unknown";
-  }
-
-  private getProcess(event: TetragonEvent) {
-    return (
-      event.process_exec?.process ??
-      event.process_exit?.process ??
-      event.process_kprobe?.process ??
-      null
-    );
-  }
-}
+  return { initialize, insert, close };
+};

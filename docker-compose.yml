@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # PostgreSQL — event storage
   postgres:
@@ -37,11 +35,10 @@ services:
     pid: host
     volumes:
       - /sys/kernel:/sys/kernel
-      - tetragon-export:/var/run/tetragon
+      - ./data/tetragon:/var/run/tetragon
     command:
       - tetragon
       - --export-filename=/var/run/tetragon/tetragon.log
 
 volumes:
   pgdata:
-  tetragon-export:

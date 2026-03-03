@@ -1,14 +1,14 @@
-import { TetragonWatcher } from "./tetragon-watcher.js";
-import { EventStore } from "./event-store.js";
+import { createWatcher } from "./tetragon-watcher.js";
+import { createEventStore } from "./event-store.js";
 import { config } from "./config.js";
 
-async function main() {
+const main = async () => {
   console.log("🔍 Argus Ingestion Service starting...");
 
-  const store = new EventStore(config.database);
+  const store = createEventStore(config.database);
   await store.initialize();
 
-  const watcher = new TetragonWatcher({
+  const watcher = createWatcher({
     exportPath: config.tetragon.exportPath,
     onEvent: async (event) => {
       await store.insert(event);
@@ -26,7 +26,7 @@ async function main() {
     await store.close();
     process.exit(0);
   });
-}
+};
 
 main().catch((err) => {
   console.error("Fatal error:", err);

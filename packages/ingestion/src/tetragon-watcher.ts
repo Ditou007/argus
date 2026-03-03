@@ -1,5 +1,5 @@
-import { createReadStream, watchFile, unwatchFile, existsSync } from "node:fs";
-import { createInterface } from "node:readline";
+import { watchFile, unwatchFile, existsSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import type { TetragonEvent } from "./types.js";
 
 interface WatcherOptions {
@@ -7,70 +7,81 @@ interface WatcherOptions {
   onEvent: (event: TetragonEvent) => Promise<void>;
 }
 
-/**
- * Watches the Tetragon JSON export file for new events.
- * Tetragon writes one JSON event per line to its export file.
- */
-export class TetragonWatcher {
-  private exportPath: string;
-  private onEvent: (event: TetragonEvent) => Promise<void>;
-  private running = false;
+export const createWatcher = (options: WatcherOptions) => {
+  const { exportPath, onEvent } = options;
+  let running = false;
+  let bytesRead = 0;
+  let eventCount = 0;
 
-  constructor(options: WatcherOptions) {
-    this.exportPath = options.exportPath;
-    this.onEvent = options.onEvent;
-  }
+  const processNewLines = async () => {
+    try {
+      const content = await readFile(exportPath, "utf-8");
+      const newContent = content.slice(bytesRead);
+      bytesRead = Buffer.byteLength(content, "utf-8");
 
-  start() {
-    this.running = true;
-    this.watch();
-  }
+      if (!newContent.trim()) return;
 
-  stop() {
-    this.running = false;
-    unwatchFile(this.exportPath);
-  }
+      const lines = newContent.split("\n").filter((l) => l.trim());
 
-  private watch() {
-    if (!existsSync(this.exportPath)) {
-      console.warn(`⏳ Waiting for Tetragon export file: ${this.exportPath}`);
-      // Poll until the file appears
+      for (const line of lines) {
+        if (!running) break;
+        try {
+          const event: TetragonEvent = JSON.parse(line);
+          await onEvent(event);
+          eventCount++;
+        } catch {
+          // Skip malformed lines
+        }
+      }
+
+      if (lines.length > 0) {
+        console.log(`📥 Processed ${lines.length} events (${eventCount} total)`);
+      }
+    } catch (err) {
+      console.error("Error reading Tetragon export:", err);
+    }
+  };
+
+  const startPolling = () => {
+    watchFile(exportPath, { interval: 1000 }, () => {
+      if (running) processNewLines();
+    });
+  };
+
+  const watch = () => {
+    if (!existsSync(exportPath)) {
+      console.warn(`⏳ Waiting for Tetragon export file: ${exportPath}`);
       const interval = setInterval(() => {
-        if (existsSync(this.exportPath)) {
+        if (existsSync(exportPath)) {
           clearInterval(interval);
-          this.tailFile();
+          processNewLines();
+          startPolling();
         }
       }, 2000);
       return;
     }
 
-    this.tailFile();
-  }
+    console.log(`📡 Tailing Tetragon export: ${exportPath}`);
+    processNewLines();
+    startPolling();
+  };
 
-  private tailFile() {
-    console.log(`📡 Tailing Tetragon export: ${this.exportPath}`);
+  const start = (startFromEnd = false) => {
+    running = true;
 
-    const stream = createReadStream(this.exportPath, {
-      encoding: "utf-8",
-      // Start from end of file (only new events)
-    });
+    if (startFromEnd && existsSync(exportPath)) {
+      bytesRead = statSync(exportPath).size;
+      console.log(`📡 Skipping ${bytesRead} bytes of existing events`);
+    }
 
-    const rl = createInterface({ input: stream });
+    watch();
+  };
 
-    rl.on("line", async (line) => {
-      if (!this.running || !line.trim()) return;
+  const stop = () => {
+    running = false;
+    unwatchFile(exportPath);
+    console.log(`⏹️  Watcher stopped. Processed ${eventCount} events total.`);
+  };
 
-      try {
-        const event: TetragonEvent = JSON.parse(line);
-        await this.onEvent(event);
-      } catch (err) {
-        console.error("Failed to parse Tetragon event:", err);
-      }
-    });
-
-    // Watch for file changes (new events appended)
-    watchFile(this.exportPath, { interval: 500 }, () => {
-      // File changed — readline will pick up new lines
-    });
-  }
-}
+  return { start, stop };
+};
