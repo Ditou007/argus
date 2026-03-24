@@ -43,5 +43,18 @@ services:
       - --tracing-policy-dir=/etc/tetragon/tetragon.tp.d
       - --export-denylist={"binary_regex":["runc","containerd","dockerd","pg_isready","redis-cli"]}
 
+  # Sample AI agent — instrumented with Argus SDK
+  sample-agent:
+    build:
+      context: .
+      dockerfile: sample-agent/Dockerfile
+    environment:
+      ARGUS_API_URL: http://host.docker.internal:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - agent
+
 volumes:
   pgdata:

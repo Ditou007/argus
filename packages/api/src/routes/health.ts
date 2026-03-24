@@ -1,16 +1,17 @@
 import { Router, type IRouter } from "express";
-import pg from "pg";
-import { config } from "../config.js";
+import type pg from "pg";
 
-export const healthRouter: IRouter = Router();
+export const createHealthRouter = (pool: pg.Pool): IRouter => {
+  const router = Router();
 
-const pool = new pg.Pool(config.database);
+  router.get("/", async (_req, res) => {
+    try {
+      await pool.query("SELECT 1");
+      res.json({ status: "healthy", service: "argus-api", db: "connected" });
+    } catch {
+      res.status(503).json({ status: "unhealthy", db: "disconnected" });
+    }
+  });
 
-healthRouter.get("/", async (_req, res) => {
-  try {
-    await pool.query("SELECT 1");
-    res.json({ status: "healthy", service: "argus-api", db: "connected" });
-  } catch {
-    res.status(503).json({ status: "unhealthy", db: "disconnected" });
-  }
-});
+  return router;
+};
