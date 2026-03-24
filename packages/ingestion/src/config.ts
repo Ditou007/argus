@@ -15,6 +15,11 @@ export const config = {
     password: process.env.DB_PASSWORD ?? "argus_dev",
   },
   tetragon: {
+    // File mode (docker-compose): tail a JSON log file
     exportPath: process.env.TETRAGON_EXPORT_PATH ?? resolve(repoRoot, "data/tetragon/tetragon.log"),
+    // gRPC mode (K8s): connect to Tetragon gRPC service
+    grpcAddress: process.env.TETRAGON_GRPC_ADDRESS ?? "localhost:54321",
+    // Toggle: "file" for docker-compose, "grpc" for K8s
+    mode: (process.env.TETRAGON_MODE ?? "file") as "file" | "grpc",
   },
 } as const;

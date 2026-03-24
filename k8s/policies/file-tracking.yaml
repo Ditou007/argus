@@ -1,14 +1,18 @@
+# TracingPolicy CRD: track file operations by Python and Node agents
+# Applied via kubectl — Tetragon picks it up automatically
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
 metadata:
-  name: "network-tracking"
+  name: file-tracking
 spec:
   kprobes:
-    - call: "tcp_connect"
+    - call: "fd_install"
       syscall: false
       args:
         - index: 0
-          type: "sock"
+          type: int
+        - index: 1
+          type: "file"
       selectors:
         - matchBinaries:
             - operator: "In"
@@ -23,13 +27,13 @@ spec:
                 - "/usr/bin/python3.13"
                 - "/usr/bin/node"
                 - "/usr/local/bin/node"
-    - call: "tcp_sendmsg"
-      syscall: false
+    - call: "sys_write"
+      syscall: true
       args:
         - index: 0
-          type: "sock"
+          type: "fd"
         - index: 2
-          type: "int"
+          type: "size_t"
       selectors:
         - matchBinaries:
             - operator: "In"

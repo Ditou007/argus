@@ -1,0 +1,15 @@
+# Expose Tetragon gRPC to other pods in the cluster
+# The default Helm chart Service only exposes metrics (2112), not gRPC (54321)
+apiVersion: v1
+kind: Service
+metadata:
+  name: tetragon-grpc
+  namespace: kube-system
+spec:
+  selector:
+    app.kubernetes.io/name: tetragon
+  ports:
+    - name: grpc
+      port: 54321
+      targetPort: 54321
+      protocol: TCP

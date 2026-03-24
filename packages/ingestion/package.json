@@ -11,8 +11,10 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "pg": "^8.13.0",
-    "dotenv": "^16.4.0"
+    "@grpc/grpc-js": "^1.14.3",
+    "@grpc/proto-loader": "^0.8.0",
+    "dotenv": "^16.4.0",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

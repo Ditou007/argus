@@ -25,6 +25,15 @@ export interface KprobeEvent {
   args?: KprobeArg[];
 }
 
+export interface PodInfo {
+  namespace: string;
+  name: string;
+  container?: {
+    id: string;
+    name: string;
+  };
+}
+
 export interface ProcessInfo {
   exec_id: string;
   pid: number;
@@ -33,6 +42,7 @@ export interface ProcessInfo {
   binary: string;
   arguments?: string;
   start_time: string;
+  pod?: PodInfo; // Present when Tetragon runs in K8s
 }
 
 export interface KprobeArg {
@@ -47,6 +57,9 @@ export interface StoredEvent {
   process_binary: string;
   process_pid: number;
   function_name: string | null;
+  pod_name: string | null;
+  pod_namespace: string | null;
+  container_id: string | null;
   raw_event: TetragonEvent;
   created_at: Date;
 }

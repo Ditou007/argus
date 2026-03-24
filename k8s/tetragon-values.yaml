@@ -1,0 +1,26 @@
+# Helm values for cilium/tetragon chart
+# Configures Tetragon DaemonSet for Argus observability
+
+tetragon:
+  # Enable gRPC API — bind to all interfaces so it's accessible from other pods
+  grpc:
+    enabled: true
+    address: "0.0.0.0:54321"
+
+  # Include process namespace info in events
+  enableProcessNs: true
+
+  # Reduce noise
+  enableProcessCred: false
+
+  # Keep JSON export enabled too (useful for debugging)
+  exportFilename: "tetragon.log"
+
+  # Export deny list
+  exportDenyList: |-
+    {"binary_regex":["runc","containerd","dockerd","pg_isready","redis-cli","pause"]}
+
+export:
+  stdout:
+    enabledCommand: false
+    enabledArgs: false

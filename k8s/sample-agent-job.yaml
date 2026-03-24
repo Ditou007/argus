@@ -1,0 +1,29 @@
+# Sample AI agent — runs 5 cycles of observable actions
+# Each run creates a new Job. Delete the old one first:
+#   kubectl delete job sample-agent --ignore-not-found && kubectl apply -f k8s/sample-agent-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sample-agent
+  labels:
+    app: sample-agent
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: sample-agent
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: agent
+          image: argus-sample-agent:local
+          imagePullPolicy: Never
+          env:
+            - name: ARGUS_API_URL
+              value: "http://argus-api:3001"
+            # Downward API: passes the actual pod name to the SDK
+            - name: ARGUS_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name

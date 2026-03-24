@@ -1,7 +1,8 @@
+# TracingPolicy CRD: track network operations by Python and Node agents
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
 metadata:
-  name: "network-tracking"
+  name: network-tracking
 spec:
   kprobes:
     - call: "tcp_connect"

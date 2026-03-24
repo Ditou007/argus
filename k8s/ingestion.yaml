@@ -1,0 +1,37 @@
+# Argus Ingestion — streams Tetragon events via gRPC, stores in Postgres
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-ingestion
+  labels:
+    app: argus-ingestion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: argus-ingestion
+  template:
+    metadata:
+      labels:
+        app: argus-ingestion
+    spec:
+      containers:
+        - name: ingestion
+          image: argus-ingestion:local
+          imagePullPolicy: Never
+          env:
+            - name: DB_HOST
+              value: postgres
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: argus
+            - name: DB_USER
+              value: argus
+            - name: DB_PASSWORD
+              value: argus_dev
+            # Switch to gRPC mode for K8s
+            - name: TETRAGON_MODE
+              value: grpc
+            - name: TETRAGON_GRPC_ADDRESS
+              value: tetragon-grpc.kube-system.svc.cluster.local:54321

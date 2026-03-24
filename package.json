@@ -10,7 +10,15 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "k8s:setup": "bash k8s/setup.sh",
+    "k8s:teardown": "bash k8s/teardown.sh",
+    "k8s:rebuild": "bash k8s/rebuild.sh",
+    "k8s:port-forward": "kubectl port-forward svc/argus-api 3001:3001",
+    "k8s:agent": "kubectl delete job sample-agent --ignore-not-found && kubectl apply -f k8s/sample-agent-job.yaml",
+    "k8s:logs:ingestion": "kubectl logs -f deploy/argus-ingestion",
+    "k8s:logs:api": "kubectl logs -f deploy/argus-api",
+    "k8s:logs:tetragon": "kubectl logs -f -n kube-system -l app.kubernetes.io/name=tetragon -c tetragon"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]
