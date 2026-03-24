@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { fetchSessionTimeline, formatTimeAgo, type AgentSession, type TimelineEntry } from "@/lib/api";
 import { SessionTimeline } from "@/components/session-timeline";
+import { useLiveStream } from "@/hooks/use-live-stream";
 
 export default function SessionDetailPage() {
   const params = useParams();
@@ -14,26 +15,125 @@ export default function SessionDetailPage() {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [liveEventCount, setLiveEventCount] = useState(0);
 
+  // Initial load
   useEffect(() => {
-    const load = () => {
-      fetchSessionTimeline(id)
-        .then((data) => {
-          setSession(data.session);
-          setTimeline(data.timeline);
-          setError(null);
-        })
-        .catch((err) => setError(err.message))
-        .finally(() => setLoading(false));
-    };
+    fetchSessionTimeline(id)
+      .then((data) => {
+        setSession(data.session);
+        setTimeline(data.timeline);
+        setError(null);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [id]);
 
-    load();
-    // Refresh every 5 seconds if session is active
-    const interval = setInterval(() => {
-      if (session && !session.ended_at) load();
-    }, 5_000);
-    return () => clearInterval(interval);
-  }, [id, session?.ended_at]);
+  // Live event stream — append kernel events as they arrive
+  const handleEvent = useCallback((data: { id: number; event_type: string; pod_name: string; process_pid: number | null; process_binary: string | null; function_name: string | null; event_time: string | null }) => {
+    setLiveEventCount((c) => c + 1);
+
+    // Add to the "latest action" in the timeline as an unscored event
+    setTimeline((prev) => {
+      if (prev.length === 0) return prev;
+
+      const updated = [...prev];
+      const lastIdx = updated.length - 1;
+      const lastEntry = updated[lastIdx];
+
+      // Only append to the last action if it hasn't ended yet, or is the most recent
+      const liveEvent = {
+        id: data.id,
+        event_type: data.event_type,
+        process_binary: data.process_binary,
+        process_pid: data.process_pid,
+        function_name: data.function_name,
+        raw_event: {},
+        created_at: data.event_time ?? new Date().toISOString(),
+        // Mark as live (unscored)
+        confidence: undefined as number | undefined,
+        correlation_method: "live_stream" as string | undefined,
+        signal_scores: undefined as Record<string, number> | undefined,
+      };
+
+      updated[lastIdx] = {
+        ...lastEntry,
+        events: [...lastEntry.events, liveEvent],
+      };
+
+      return updated;
+    });
+  }, []);
+
+  // Live correlation updates — replace event counts with scored results
+  const handleCorrelation = useCallback((data: { action_id: string; events_correlated: number; high_confidence: number; medium_confidence: number; low_confidence: number }) => {
+    // Reload the full timeline to get properly scored events
+    fetchSessionTimeline(id)
+      .then((freshData) => {
+        setSession(freshData.session);
+        setTimeline(freshData.timeline);
+      })
+      .catch(() => {});
+  }, [id]);
+
+  // Live action notifications — add new actions to the timeline
+  const handleAction = useCallback((data: { action_id: string; session_id: string; action_type: string; action_name: string | null; status: "started" | "ended" }) => {
+    if (data.session_id !== id) return;
+
+    if (data.status === "started") {
+      setTimeline((prev) => [
+        ...prev,
+        {
+          action: {
+            id: data.action_id,
+            session_id: data.session_id,
+            action_type: data.action_type,
+            action_name: data.action_name,
+            input_summary: null,
+            output_summary: null,
+            metadata: {},
+            started_at: new Date().toISOString(),
+            ended_at: null,
+            created_at: new Date().toISOString(),
+          },
+          events: [],
+        },
+      ]);
+    }
+
+    if (data.status === "ended") {
+      setTimeline((prev) =>
+        prev.map((entry) =>
+          entry.action.id === data.action_id
+            ? { ...entry, action: { ...entry.action, ended_at: new Date().toISOString() } }
+            : entry
+        )
+      );
+    }
+  }, [id]);
+
+  // Live session notifications — mark as ended
+  const handleSession = useCallback((data: { session_id: string; status: "started" | "ended" }) => {
+    if (data.session_id === id && data.status === "ended") {
+      // Reload to get final batch-correlated data
+      setTimeout(() => {
+        fetchSessionTimeline(id)
+          .then((freshData) => {
+            setSession(freshData.session);
+            setTimeline(freshData.timeline);
+          })
+          .catch(() => {});
+      }, 1000);
+    }
+  }, [id]);
+
+  const { connected } = useLiveStream({
+    sessionId: id,
+    onEvent: handleEvent,
+    onCorrelation: handleCorrelation,
+    onAction: handleAction,
+    onSession: handleSession,
+  });
 
   if (loading) {
     return (
@@ -91,6 +191,19 @@ export default function SessionDetailPage() {
               <h1 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0 }}>
                 {session.agent_name}
               </h1>
+              {/* WebSocket connection indicator */}
+              <span
+                style={{
+                  fontSize: "0.625rem",
+                  padding: "0.125rem 0.375rem",
+                  borderRadius: "4px",
+                  backgroundColor: connected ? "#22c55e1a" : "#ef44441a",
+                  color: connected ? "#22c55e" : "#ef4444",
+                  border: `1px solid ${connected ? "#22c55e33" : "#ef444433"}`,
+                }}
+              >
+                {connected ? "LIVE" : "OFFLINE"}
+              </span>
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#a3a3a3" }}>
               PID {session.agent_pid}
@@ -102,15 +215,23 @@ export default function SessionDetailPage() {
 
           <div style={{ display: "flex", gap: "2rem" }}>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{session.action_count ?? 0}</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{timeline.length}</div>
               <div style={{ fontSize: "0.6875rem", color: "#737373" }}>Actions</div>
             </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: "1.5rem", fontWeight: 600, color: "#3b82f6" }}>
-                {session.event_count ?? 0}
+                {timeline.reduce((sum, t) => sum + t.events.length, 0)}
               </div>
               <div style={{ fontSize: "0.6875rem", color: "#737373" }}>Events</div>
             </div>
+            {liveEventCount > 0 && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 600, color: "#22c55e" }}>
+                  {liveEventCount}
+                </div>
+                <div style={{ fontSize: "0.6875rem", color: "#737373" }}>Live</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -135,13 +256,28 @@ export default function SessionDetailPage() {
       <h2 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem" }}>
         Action Timeline
         {isActive && (
-          <span style={{ fontSize: "0.75rem", color: "#22c55e", fontWeight: 400, marginLeft: "0.5rem" }}>
+          <span
+            style={{
+              fontSize: "0.75rem",
+              color: "#22c55e",
+              fontWeight: 400,
+              marginLeft: "0.5rem",
+              animation: "pulse 2s infinite",
+            }}
+          >
             Live
           </span>
         )}
       </h2>
 
       <SessionTimeline timeline={timeline} />
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
     </main>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { fetchSessions, formatTimeAgo, type AgentSession } from "@/lib/api";
+import { useLiveStream } from "@/hooks/use-live-stream";
 
 const STATUS_COLORS = {
   active: "#22c55e",
@@ -14,27 +15,46 @@ export default function SessionsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = () => {
-      fetchSessions()
-        .then((data) => setSessions(data.sessions))
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    };
-
-    load();
-    const interval = setInterval(load, 10_000);
-    return () => clearInterval(interval);
+    fetchSessions()
+      .then((data) => setSessions(data.sessions))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
+
+  // Live session notifications — reload when sessions start/end
+  const handleSession = useCallback(() => {
+    fetchSessions()
+      .then((data) => setSessions(data.sessions))
+      .catch(() => {});
+  }, []);
+
+  const { connected } = useLiveStream({
+    onSession: handleSession,
+  });
 
   return (
     <main style={{ padding: "1.5rem 2rem", maxWidth: "1400px", margin: "0 auto" }}>
-      <div style={{ marginBottom: "1.5rem" }}>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>
-          Agent Sessions
-        </h1>
-        <p style={{ color: "#737373", margin: "0.25rem 0 0", fontSize: "0.875rem" }}>
-          Track agent lifecycles and correlated kernel events
-        </p>
+      <div style={{ marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>
+            Agent Sessions
+          </h1>
+          <p style={{ color: "#737373", margin: "0.25rem 0 0", fontSize: "0.875rem" }}>
+            Track agent lifecycles and correlated kernel events
+          </p>
+        </div>
+        <span
+          style={{
+            fontSize: "0.625rem",
+            padding: "0.125rem 0.375rem",
+            borderRadius: "4px",
+            backgroundColor: connected ? "#22c55e1a" : "#ef44441a",
+            color: connected ? "#22c55e" : "#ef4444",
+            border: `1px solid ${connected ? "#22c55e33" : "#ef444433"}`,
+          }}
+        >
+          {connected ? "LIVE" : "OFFLINE"}
+        </span>
       </div>
 
       <div

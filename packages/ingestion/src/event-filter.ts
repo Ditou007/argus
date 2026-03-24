@@ -11,6 +11,15 @@ const DENY_BINARIES = new Set([
   "/proc/self/fd/6", // runc init
 ]);
 
+// Argus's own pods — exclude to prevent feedback loops
+// (ingestion inserts cause tcp_sendmsg events, which get ingested, causing more inserts...)
+const DENY_POD_PREFIXES = [
+  "argus-api",
+  "argus-ingestion",
+  "postgres",
+  "redis",
+];
+
 // Binary patterns we want to track (agent-related)
 const ALLOW_BINARY_PATTERNS = [
   /python/i,
@@ -32,6 +41,10 @@ export const shouldIngest = (event: TetragonEvent): boolean => {
 
   // Always deny known infrastructure noise
   if (DENY_BINARIES.has(binary)) return false;
+
+  // Deny events from Argus's own pods (prevents feedback loop)
+  const podName = proc.pod?.name ?? "";
+  if (podName && DENY_POD_PREFIXES.some((prefix) => podName.startsWith(prefix))) return false;
 
   // Allow if binary matches any agent pattern
   if (ALLOW_BINARY_PATTERNS.some((pattern) => pattern.test(binary))) return true;

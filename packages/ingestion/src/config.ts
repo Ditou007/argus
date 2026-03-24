@@ -14,6 +14,10 @@ export const config = {
     user: process.env.DB_USER ?? "argus",
     password: process.env.DB_PASSWORD ?? "argus_dev",
   },
+  redis: {
+    host: process.env.REDIS_HOST ?? "localhost",
+    port: parseInt(process.env.REDIS_PORT_NUMBER ?? "6379", 10),
+  },
   tetragon: {
     // File mode (docker-compose): tail a JSON log file
     exportPath: process.env.TETRAGON_EXPORT_PATH ?? resolve(repoRoot, "data/tetragon/tetragon.log"),

@@ -19,7 +19,14 @@ spec:
         - name: ingestion
           image: argus-ingestion:local
           imagePullPolicy: Never
+          resources:
+            requests:
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
           env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=384"
             - name: DB_HOST
               value: postgres
             - name: DB_PORT
@@ -30,6 +37,8 @@ spec:
               value: argus
             - name: DB_PASSWORD
               value: argus_dev
+            - name: REDIS_HOST
+              value: redis
             # Switch to gRPC mode for K8s
             - name: TETRAGON_MODE
               value: grpc

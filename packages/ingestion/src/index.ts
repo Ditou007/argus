@@ -10,7 +10,7 @@ let filtered = 0;
 const main = async () => {
   console.log(`Argus Ingestion Service starting (mode: ${config.tetragon.mode})...`);
 
-  const store = createEventStore(config.database);
+  const store = createEventStore(config.database, config.redis);
   await store.initialize();
 
   const onEvent = async (event: Parameters<typeof shouldIngest>[0]) => {

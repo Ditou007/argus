@@ -34,6 +34,8 @@ spec:
               value: argus
             - name: DB_PASSWORD
               value: argus_dev
+            - name: REDIS_HOST
+              value: redis
           readinessProbe:
             httpGet:
               path: /api/health

@@ -9,4 +9,9 @@ export const config = {
     user: process.env.DB_USER ?? "argus",
     password: process.env.DB_PASSWORD ?? "argus_dev",
   },
+  redis: {
+    host: process.env.REDIS_HOST ?? "localhost",
+    // REDIS_PORT is auto-set by K8s to "tcp://..." — use REDIS_PORT_NUMBER instead
+    port: parseInt(process.env.REDIS_PORT_NUMBER ?? "6379", 10),
+  },
 } as const;

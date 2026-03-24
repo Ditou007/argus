@@ -1,4 +1,5 @@
 import pg from "pg";
+import { Redis } from "ioredis";
 import type { TetragonEvent } from "./types.js";
 import { createMigrationRunner } from "./migrations/runner.js";
 
@@ -8,6 +9,11 @@ interface DBConfig {
   database: string;
   user: string;
   password: string;
+}
+
+interface RedisConfig {
+  host: string;
+  port: number;
 }
 
 const getEventType = (event: TetragonEvent): string => {
@@ -38,8 +44,13 @@ const getEventTime = (event: TetragonEvent): string | null => {
   return null;
 };
 
-export const createEventStore = (dbConfig: DBConfig) => {
+export const createEventStore = (dbConfig: DBConfig, redisConfig: RedisConfig) => {
   const pool = new pg.Pool(dbConfig);
+  const redis = new Redis(redisConfig);
+
+  redis.on("error", (err: Error) => {
+    console.error("Redis pub error:", err.message);
+  });
 
   const initialize = async () => {
     const migrator = createMigrationRunner(pool);
@@ -50,25 +61,43 @@ export const createEventStore = (dbConfig: DBConfig) => {
   const insert = async (event: TetragonEvent) => {
     const eventType = getEventType(event);
     const proc = getProcess(event);
+    const podName = proc?.pod?.name ?? null;
+    const functionName = event.process_kprobe?.function_name ?? null;
 
-    await pool.query(
+    const result = await pool.query(
       `INSERT INTO events (event_type, process_binary, process_pid, function_name, pod_name, pod_namespace, container_id, event_time, raw_event)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
       [
         eventType,
         proc?.binary ?? null,
         proc?.pid ?? null,
-        event.process_kprobe?.function_name ?? null,
-        proc?.pod?.name ?? null,
+        functionName,
+        podName,
         proc?.pod?.namespace ?? null,
         proc?.pod?.container?.id ?? null,
         getEventTime(event),
         JSON.stringify(event),
       ]
     );
+
+    // Publish lightweight notification to Redis for real-time streaming
+    const eventId = result.rows[0]?.id;
+    if (eventId && podName) {
+      redis.publish("argus:events", JSON.stringify({
+        id: eventId,
+        event_type: eventType,
+        pod_name: podName,
+        process_pid: proc?.pid ?? null,
+        process_binary: proc?.binary ?? null,
+        function_name: functionName,
+        event_time: getEventTime(event),
+      })).catch(() => {/* non-critical */});
+    }
   };
 
   const close = async () => {
+    await redis.quit();
     await pool.end();
   };
 

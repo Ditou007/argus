@@ -1,8 +1,11 @@
 import { Router, type IRouter } from "express";
 import type pg from "pg";
 import { createCorrelator } from "../correlator.js";
+import type { createLiveStream } from "../ws/live-stream.js";
 
-export const createSessionsRouter = (pool: pg.Pool): IRouter => {
+type LiveStream = ReturnType<typeof createLiveStream>;
+
+export const createSessionsRouter = (pool: pg.Pool, liveStream: LiveStream): IRouter => {
   const router = Router();
   const correlator = createCorrelator(pool);
 
@@ -23,7 +26,10 @@ export const createSessionsRouter = (pool: pg.Pool): IRouter => {
         [agent_name, agent_pid, host_name ?? null, pod_name ?? null, JSON.stringify(metadata ?? {})]
       );
 
-      res.status(201).json({ session: result.rows[0] });
+      const session = result.rows[0];
+      liveStream.notifySessionStarted(session.id, agent_name, pod_name ?? null);
+
+      res.status(201).json({ session });
     } catch (err) {
       console.error("Failed to create session:", err);
       res.status(500).json({ error: "Failed to create session" });
@@ -81,7 +87,7 @@ export const createSessionsRouter = (pool: pg.Pool): IRouter => {
     }
   });
 
-  // PATCH /api/sessions/:id/end — mark session as ended
+  // PATCH /api/sessions/:id/end — mark session as ended, batch re-correlate all actions
   router.patch("/:id/end", async (req, res) => {
     try {
       const result = await pool.query(
@@ -96,7 +102,34 @@ export const createSessionsRouter = (pool: pg.Pool): IRouter => {
         return;
       }
 
-      res.json({ session: result.rows[0] });
+      const session = result.rows[0];
+      liveStream.notifySessionEnded(session.id, session.agent_name, session.pod_name);
+
+      // Respond immediately — don't block on re-correlation
+      res.json({ session });
+
+      // Deferred batch re-correlate: wait for stragglers in the ingestion pipeline
+      // Events travel: kernel -> Tetragon -> gRPC -> ingestion -> DB, which can lag 2-5s
+      setTimeout(async () => {
+        try {
+          const actionsResult = await pool.query(
+            "SELECT id FROM agent_actions WHERE session_id = $1 AND ended_at IS NOT NULL",
+            [session.id]
+          );
+
+          for (const action of actionsResult.rows) {
+            try {
+              const corr = await correlator.correlateAction(action.id);
+              liveStream.notifyCorrelation(session.id, corr);
+            } catch {
+              // Skip actions that fail correlation
+            }
+          }
+          console.log(`Deferred re-correlation complete for session ${session.id.substring(0, 8)} (${actionsResult.rows.length} actions)`);
+        } catch (err) {
+          console.error("Deferred re-correlation failed:", err);
+        }
+      }, 3000);
     } catch (err) {
       console.error("Failed to end session:", err);
       res.status(500).json({ error: "Failed to end session" });
@@ -128,7 +161,18 @@ export const createSessionsRouter = (pool: pg.Pool): IRouter => {
         ]
       );
 
-      res.status(201).json({ action: result.rows[0] });
+      const action = result.rows[0];
+
+      // Look up the session's pod_name for incremental correlation tracking
+      const sessionResult = await pool.query(
+        "SELECT pod_name FROM agent_sessions WHERE id = $1",
+        [sessionId]
+      );
+      const podName = sessionResult.rows[0]?.pod_name ?? null;
+
+      liveStream.notifyActionStarted(action.id, sessionId, action_type, action_name ?? null, podName);
+
+      res.status(201).json({ action });
     } catch (err) {
       console.error("Failed to create action:", err);
       res.status(500).json({ error: "Failed to create action" });
@@ -154,8 +198,11 @@ export const createSessionsRouter = (pool: pg.Pool): IRouter => {
 
       const action = result.rows[0];
 
-      // Trigger correlation
+      // Trigger correlation (optimistic — may find some events)
       const correlation = await correlator.correlateAction(action.id);
+
+      liveStream.notifyActionEnded(action.id, action.session_id, action.action_type, action.action_name);
+      liveStream.notifyCorrelation(action.session_id, correlation);
 
       res.json({ action, correlation });
     } catch (err) {
