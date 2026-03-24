@@ -179,11 +179,11 @@ export const createSessionsRouter = (pool: pg.Pool): IRouter => {
   router.get("/actions/:id/events", async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT e.*, ec.confidence, ec.correlation_method
+        `SELECT e.*, ec.confidence, ec.correlation_method, ec.signal_scores
          FROM events e
          JOIN event_correlations ec ON e.id = ec.event_id
          WHERE ec.action_id = $1
-         ORDER BY e.created_at ASC`,
+         ORDER BY ec.confidence DESC, COALESCE(e.event_time, e.created_at) ASC`,
         [req.params.id]
       );
 
@@ -226,11 +226,11 @@ export const createSessionsRouter = (pool: pg.Pool): IRouter => {
       const timeline = await Promise.all(
         actionsResult.rows.map(async (action) => {
           const eventsResult = await pool.query(
-            `SELECT e.*, ec.confidence, ec.correlation_method
+            `SELECT e.*, ec.confidence, ec.correlation_method, ec.signal_scores
              FROM events e
              JOIN event_correlations ec ON e.id = ec.event_id
              WHERE ec.action_id = $1
-             ORDER BY e.created_at ASC`,
+             ORDER BY ec.confidence DESC, COALESCE(e.event_time, e.created_at) ASC`,
             [action.id]
           );
 

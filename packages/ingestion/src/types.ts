@@ -49,6 +49,15 @@ export interface KprobeArg {
   string_arg?: string;
   int_arg?: number;
   file_arg?: { path: string };
+  sock_arg?: {
+    family: string;
+    type: string;
+    protocol: string;
+    saddr: string;
+    daddr: string;
+    sport: number;
+    dport: number;
+  };
 }
 
 export interface StoredEvent {

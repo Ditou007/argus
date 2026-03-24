@@ -97,10 +97,14 @@ class ArgusAction:
         })
         if result and "correlation" in result:
             corr = result["correlation"]
+            top = ", ".join(corr.get("top_signals", []))
             print(
                 f"[argus-sdk] Action ended: {self.action_type}/{self.action_name} "
                 f"-> {corr['events_correlated']} events correlated "
-                f"({corr['direct_matches']} direct, {corr['child_matches']} child)"
+                f"(high={corr.get('high_confidence', 0)}, "
+                f"med={corr.get('medium_confidence', 0)}, "
+                f"low={corr.get('low_confidence', 0)})"
+                f"{f' top: {top}' if top else ''}"
             )
 
 

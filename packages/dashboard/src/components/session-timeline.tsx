@@ -10,10 +10,11 @@ const ACTION_TYPE_COLORS: Record<string, string> = {
   tool_use: "#f97316",
 };
 
-const CONFIDENCE_COLORS: Record<string, string> = {
-  high: "#22c55e",
-  medium: "#f59e0b",
-};
+const CONFIDENCE_COLORS = {
+  high: "#22c55e",    // > 0.7
+  medium: "#f59e0b",  // 0.3 - 0.7
+  low: "#525252",     // < 0.3
+} as const;
 
 interface SessionTimelineProps {
   timeline: TimelineEntry[];
@@ -181,9 +182,18 @@ export const SessionTimeline = ({ timeline }: SessionTimelineProps) => {
   );
 };
 
-const EventRow = ({ event }: { event: StoredEvent & { confidence?: number; correlation_method?: string } }) => {
-  const confidence = event.confidence ?? 1.0;
-  const confColor = confidence >= 0.9 ? CONFIDENCE_COLORS.high : CONFIDENCE_COLORS.medium;
+const EventRow = ({ event }: { event: StoredEvent & { confidence?: number; correlation_method?: string; signal_scores?: Record<string, number> } }) => {
+  const confidence = event.confidence ?? 0;
+  const confColor = confidence > 0.7
+    ? CONFIDENCE_COLORS.high
+    : confidence >= 0.3
+      ? CONFIDENCE_COLORS.medium
+      : CONFIDENCE_COLORS.low;
+
+  const signals = event.signal_scores ?? {};
+  const signalTooltip = Object.entries(signals)
+    .map(([name, score]) => `${name}: ${(score * 100).toFixed(0)}%`)
+    .join(", ");
 
   return (
     <div
@@ -195,6 +205,7 @@ const EventRow = ({ event }: { event: StoredEvent & { confidence?: number; corre
         fontSize: "0.75rem",
         borderBottom: "1px solid #1a1a1a",
         fontFamily: "monospace",
+        opacity: confidence < 0.3 ? 0.5 : 1,
       }}
     >
       <span style={{ color: "#525252", minWidth: 35 }}>
@@ -208,13 +219,24 @@ const EventRow = ({ event }: { event: StoredEvent & { confidence?: number; corre
       </span>
       <span
         style={{
+          fontSize: "0.625rem",
+          color: confColor,
+          minWidth: 35,
+          textAlign: "right",
+        }}
+        title={signalTooltip || `${event.correlation_method}`}
+      >
+        {(confidence * 100).toFixed(0)}%
+      </span>
+      <span
+        style={{
           display: "inline-block",
           width: 6,
           height: 6,
           borderRadius: "50%",
           backgroundColor: confColor,
         }}
-        title={`${(confidence * 100).toFixed(0)}% confidence (${event.correlation_method})`}
+        title={signalTooltip || `${(confidence * 100).toFixed(0)}% (${event.correlation_method})`}
       />
     </div>
   );
