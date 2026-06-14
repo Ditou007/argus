@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/@wednesday-sol/keel/config/keel.schema.json",
+  "profile": "monorepo-pnpm",
+  "baseBranches": [
+    "main",
+    "master",
+    "develop"
+  ],
+  "docs": {
+    "docSyncIgnore": [
+      ".claude/"
+    ]
+  }
+}

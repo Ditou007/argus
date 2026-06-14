@@ -21,9 +21,16 @@
     "k8s:logs:tetragon": "kubectl logs -f -n kube-system -l app.kubernetes.io/name=tetragon -c tetragon"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@wednesday-sol/keel": "^0.14.0",
+    "eslint": "^9",
+    "eslint-plugin-sonarjs": "^4"
   }
 }

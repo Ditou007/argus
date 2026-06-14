@@ -1,0 +1,15 @@
+# argus
+
+<!-- keel:start -->
+## keel
+
+This repo is governed by [keel](https://github.com/wednesday-solutions/keel) v0.14.0 — a Claude-Code-native engineering harness.
+
+- **Intake & routing (do this first):** when the user gives a free-form request, don't jump to code. **Classify** it into the lifecycle phase it belongs to — Define (new behavior/intent), Plan (a spec exists, needs slicing), Build (a slice is ready), Verify, Review, or Ship — then **state your read** ("this looks like Define — no spec yet") and ask 1–3 **clarifying questions** to sharpen it before acting. Once it's clear, route into that phase command and read its skill. Skip the questions only for trivial/conversational asks.
+- **Spec-first triage (before any code):** scan your specs directory (docs/specs/) and decide whether this request belongs to a spec already in place or is genuinely new. **Matches an existing spec → it's a change:** update that spec in the same work *and* add a dated entry under the `.changelog/` ledger naming that spec (only for a spec that actually changed — never a gratuitous entry). **No match → it's a new feature:** create a new `SPEC_NN` (Goal · Tasks · Done) first. Either way the spec lands before the code — you never write code whose spec you couldn't place.
+- **Lifecycle:** drive work through the phase commands — `/keel:spec` → `/keel:plan` → `/keel:build` → `/keel:verify` → `/keel:review` → `/keel:ship`. Once a spec's `## Plan` is committed, `/keel:run <spec>` drives its slices through Build→Ship one PR at a time (step pauses after each slice, auto continues once the prior is done; it never merges). Load `/keel:master` to (re)load the rules.
+- **The gate (the teeth):** run `keel eval` before every push — it runs the diff-scoped checks (PR size · TDD · lint ratchet · duplication · typecheck · patch coverage · doc-sync · spec-sync · secret-scan · changeset) locally, exactly as CI does. **Fix what it flags; never weaken a threshold to go green.**
+- **Drive to green — don't stop at "pushed", don't ask to watch.** After you push, watch CI to green and run `/keel:address-review` until every reviewer comment (bot + human) is resolved — root-cause failures, never blind-retry. After the human authorizes a merge, watch the release/CD run to green and confirm the published version. Return to the human only for a genuine blocker or a decision that's theirs (e.g. authorizing the merge) — **never to ask "should I watch it turn green?"** Verification and review-resolution are part of the job, not a question handed back.
+- **Config:** all knobs live in `keel.config.json` (this repo) deep-merged over keel's defaults. Read it; never hardcode a threshold in a skill or check.
+- **Read the skill before acting.** A skill is the discipline; the gate is the enforcement. They agree by design.
+<!-- keel:end -->
