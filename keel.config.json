@@ -9,6 +9,15 @@
   "docs": {
     "docSyncIgnore": [
       ".claude/"
-    ]
+    ],
+    "specSync": {
+      "enabled": true,
+      "rules": [
+        {
+          "when": "^packages/api/src/correlation/",
+          "requireTouched": "^docs/specs/SPEC_01_correlation_accuracy\\.md$"
+        }
+      ]
+    }
   }
 }
