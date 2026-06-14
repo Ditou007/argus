@@ -2,7 +2,9 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Planned — 9 slices in `## Plan`; Build in progress (Slice 1).
+**Status:** 🟢 Build in progress — 11 slices in `## Plan`. Slice 1 done; Slice 2 real capture
+obtained (labelling pending). Scope expanded with arm64 + container-PID engine fixes (Slices 10–11)
+after running on real Kubernetes — see **Real-run findings**.
 
 ---
 
@@ -78,6 +80,18 @@ Atomic, vertically-sliced — `/keel:plan` sequences these into reviewable PRs.
    corpus; recommend data-driven values; write a committed baseline metrics file.
 10. **Regression gate.** Wire an eval into CI/keel that fails when attribution F1 or unexplained
     recall drops below the committed baseline beyond a configured tolerance.
+11. **Fix: architecture-aware syscall matching.** The signals hardcode `sys_write`/`sys_read`, but
+    real arm64 Tetragon events are `__arm64_sys_write` (and x86 `__x64_sys_write`). Normalize the
+    kernel symbol (strip the `__<arch>_` prefix) where the signals compare function names, proven by
+    the real fixture: write recall goes from 0 → matching before/after.
+12. **Fix: container-PID reality.** The SDK reports the container-namespace PID (`1`), while Tetragon
+    reports host PIDs, so `process_identity`'s exact-PID=1.0 path never fires in k8s. Make identity
+    robust to the namespace gap (translate via pod+namespaced-pid, or stop treating exact-PID as the
+    dominant signal when the agent PID is a container PID), measured before/after on the real fixture.
+
+> Tasks 11–12 emerged from running the pipeline on real Kubernetes (see **Real-run findings**). The
+> over-correlation tail and the ingestion-timing gap (early actions correlate 0) are **measured** by
+> this spec but fixed elsewhere — timing is an ingestion-architecture concern, not a scoring bug.
 
 ---
 
@@ -119,6 +133,18 @@ Each line is written to become a failing test in Build.
 - [ ] **D10 — The gate catches regressions.** The eval fails when attribution F1 or unexplained
   recall drops below the committed baseline beyond the configured tolerance. *(test: inject a
   degraded config → eval exits non-zero with the offending metric named)*
+- [ ] **D11 — arm64 write syscalls correlate (fix).** Using the real captured fixture, a
+  `file_write` action's `__arm64_sys_write` events are matched by the file/function signals. Recall
+  for the write syscall is 0 **before** the normalization fix and > 0 **after**. *(test: real
+  fixture, assert `__arm64_sys_write` recall before/after; assert `sys_write` still matches too)*
+- [ ] **D12 — container-PID case handled (fix).** With `agent_pid` = a container PID (`1`) and
+  host-PID events, identity no longer silently dead-ends at same-pod=0.4 for the agent's own
+  syscalls; attribution recall on the real fixture improves measurably after the fix. *(test: real
+  fixture, assert identity contribution / recall before vs after)*
+- [ ] **D13 — ingestion-timing gap is measured, not hidden.** The harness reports the recall lost
+  when an action ends before its events are ingested (the first actions in the real run correlated
+  0). Reported as a named metric, with the cause documented — fixing it is out of scope (ingestion
+  architecture). *(test: a fixture modelling late-arriving events shows the recall gap is reported)*
 
 ---
 
@@ -138,7 +164,10 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/runner.test.ts` (known-answer fixture) + `eval/schema.test.ts` (reject malformed).
   - *DoD:* tests green · `keel eval` green · within budget.
   - *Traces:* D1(partial), D3, D4(this fixture), D5. *Depends on:* —
-- [ ] **Slice 2 — Real seed fixture + multi-action corpus loader.**
+- [ ] **Slice 2 — Real seed fixture + multi-action corpus loader.** ⏳ Raw capture obtained: a live
+  `real_agent.py` run on kind+Tetragon produced 7 actions + 1061 events + 1068 correlations
+  (pod `real-agent-wl6xn`), preserved in `packages/eval/fixtures/raw/` (gitignored). Remaining:
+  curate + hand-label into a committed fixture.
   - *Delivers:* a frozen, hand-labelled fixture captured from a real `real_agent.py` run under
     Tetragon, covering all five action types; schema extended to multi-action sessions; documented,
     repeatable capture procedure.
@@ -197,6 +226,24 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/gate.test.ts`.
   - *DoD:* tests green · `keel eval` green · CI wired.
   - *Traces:* D10. *Depends on:* Slice 8.
+- [ ] **Slice 10 — Fix: architecture-aware syscall matching.**
+  - *Delivers:* the file/function/network signals + `action-parser` match the kernel symbol
+    regardless of the `__<arch>_` prefix (`__arm64_sys_write` / `__x64_sys_write` / `sys_write`),
+    via a normalization helper read by the signals.
+  - *Acceptance:* on the real fixture, `__arm64_sys_write` recall is 0 before and > 0 after;
+    `sys_write` still matches; no other signal regresses (characterization on the synthetic corpus).
+  - *Test:* `eval/arch-syscall.test.ts` (before/after recall on the real fixture).
+  - *DoD:* tests green · `keel eval` green · spec touched (correlation code changed).
+  - *Traces:* D11. *Depends on:* Slice 2 (real fixture), Slice 3 (metrics).
+- [ ] **Slice 11 — Fix: container-PID reality.**
+  - *Delivers:* `process_identity` no longer treats exact-PID as dominant when the agent PID is a
+    container PID; identity is derived from pod + the namespaced PID where available, so the agent's
+    own host-PID syscalls aren't capped at same-pod=0.4.
+  - *Acceptance:* on the real fixture (agent_pid=1, host-PID events) attribution recall improves
+    measurably after the fix; the synthetic exact-PID fixture still scores 1.0.
+  - *Test:* `eval/container-pid.test.ts` (before/after on the real fixture; exact-PID unchanged).
+  - *DoD:* tests green · `keel eval` green · spec touched.
+  - *Traces:* D12. *Depends on:* Slice 2, Slice 3.
 
 **Risks carried:** (1) Slice 2 needs live Tetragon/k8s — infra confirmed available. (2) Labelling is
 subjective; mitigated by documented rules + an `uncertain` label excluded from P/R. (3) D7
@@ -223,3 +270,20 @@ inherits (i)'s errors — sequenced last, guarded by the Slice 9 baseline gate.
   core, seeded from real captures (chosen over live-capture-in-loop for determinism + CI-safety).
 - Capability (ii) was folded into this spec by explicit decision; it is sequenced **after** (i) in
   the Plan because trustworthy attribution is its prerequisite.
+
+### Real-run findings (2026-06-14)
+
+Running the full pipeline on kind+Tetragon (after fixing two pre-existing infra bugs — `pnpm@latest`
+breaking the Node-20 image build, and `setup.sh` never applying `tetragon-grpc-service.yaml`)
+produced the first real correlation data and surfaced four scoring-fidelity issues that reshaped the
+plan:
+
+1. **arm64 syscall names.** Real write events are `__arm64_sys_write` (340 of them), but the signals
+   hardcode `sys_write` → that signal never fires on arm64. → Slice 10 (fix). Vindicates seeding
+   fixtures from real captures rather than idealized synthetic names.
+2. **Container PID.** The SDK reports `agent_pid=1` (container namespace); Tetragon reports host
+   PIDs → `process_identity` exact-match is dead in k8s, always same-pod=0.4. → Slice 11 (fix).
+3. **Over-correlation.** One `httpbin` GET drew 98 correlated events (62 low-confidence) — the false-
+   positive tail the precision metric (D5) is built to quantify.
+4. **Ingestion timing.** The first 3 actions correlated 0 — events arrive after the action ends. →
+   measured (D13), not fixed here (ingestion-architecture concern).
