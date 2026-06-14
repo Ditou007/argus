@@ -6,9 +6,20 @@
     "master",
     "develop"
   ],
+  "changesets": {
+    "enabled": false,
+    "$note": "Argus packages are private apps, not published npm libraries — no changeset ledger."
+  },
+  "boundary": {
+    "allow": [
+      "(^|/)pnpm-lock\\.yaml$"
+    ],
+    "$note": "The lockfile is pnpm-managed; legitimate dependency additions regenerate it. Allowed so normal dep changes don't trip boundary-guard."
+  },
   "docs": {
     "docSyncIgnore": [
-      ".claude/"
+      ".claude/",
+      "docs/specs/"
     ],
     "specSync": {
       "enabled": true,
