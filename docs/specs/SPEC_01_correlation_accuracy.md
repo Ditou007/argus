@@ -2,7 +2,7 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟡 Defined — awaiting `/keel:plan` (multi-slice).
+**Status:** 🟢 Planned — 9 slices in `## Plan`; Build in progress (Slice 1).
 
 ---
 
@@ -121,6 +121,87 @@ Each line is written to become a failing test in Build.
   degraded config → eval exits non-zero with the offending metric named)*
 
 ---
+
+## Plan
+
+Sequenced, value-first slices. `/keel:build` walks this top-down, ticking `[ ]` → `[x]` as each
+ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 15`).
+
+- [ ] **Slice 1 — Thin e2e: one synthetic fixture → one precision/recall number.**
+  - *Delivers:* `packages/eval` workspace package; a minimal Zod fixture schema; one hand-authored
+    synthetic fixture (`llm_call` + a true `tcp_connect` event + the same-PID-in-window decoy
+    `fd_install`); a runner that feeds it through the **real** `scoreEvent`/`parseActionHints` and
+    prints precision/recall at confidence threshold 0.3.
+  - *Acceptance:* schema rejects a fixture with a missing label; the runner uses zero DB/network;
+    two runs produce identical output; on this fixture P/R equal hand-computed values; the decoy is
+    counted against precision at 0.3.
+  - *Test:* `eval/runner.test.ts` (known-answer fixture) + `eval/schema.test.ts` (reject malformed).
+  - *DoD:* tests green · `keel eval` green · within budget.
+  - *Traces:* D1(partial), D3, D4(this fixture), D5. *Depends on:* —
+- [ ] **Slice 2 — Real seed fixture + multi-action corpus loader.**
+  - *Delivers:* a frozen, hand-labelled fixture captured from a real `real_agent.py` run under
+    Tetragon, covering all five action types; schema extended to multi-action sessions; documented,
+    repeatable capture procedure.
+  - *Acceptance:* fixture loads; all 5 `action_type`s present; no event unlabelled; capture
+    procedure documented.
+  - *Test:* `eval/corpus.test.ts` (loads real fixture, asserts 5 types, asserts full labelling).
+  - *DoD:* tests green · `keel eval` green · capture doc committed.
+  - *Traces:* D2. *Depends on:* Slice 1.
+- [ ] **Slice 3 — Per-`action_type` metrics + threshold-parameterized report.**
+  - *Delivers:* precision/recall/F1 per `action_type` as a function of confidence threshold; a
+    written report artifact.
+  - *Acceptance:* metrics equal hand-computed values per type on a known fixture; report is
+    structured and deterministic.
+  - *Test:* `eval/metrics.test.ts`.
+  - *DoD:* tests green · `keel eval` green.
+  - *Traces:* D4(full), D9(partial). *Depends on:* Slice 1.
+- [ ] **Slice 4 — Calibration.**
+  - *Delivers:* correlations binned by confidence band with observed accuracy per bin, plus bin
+    counts, in the report.
+  - *Acceptance:* per-bin accuracy matches hand-computed bins on a known fixture; bin counts shown.
+  - *Test:* `eval/calibration.test.ts`.
+  - *DoD:* tests green · `keel eval` green.
+  - *Traces:* D6. *Depends on:* Slice 3.
+- [ ] **Slice 5 — Magic numbers → config (characterization-guarded). Refactor-only.**
+  - *Delivers:* all five signal weights + thresholds/constants (`0.15` discard, `0.7`/`0.3` bands,
+    `500ms` skew, `200ms` pad, Gaussian coeff) read from config; signals read config, never hardcode.
+  - *Acceptance:* with shipped config, scoring output is byte-identical to pre-extraction on the
+    corpus (rounding preserved); changing a config weight changes the score.
+  - *Test:* `eval/characterization.test.ts` (snapshot pre/post identical).
+  - *DoD:* tests green · `keel eval` green · no behavior change · spec touched.
+  - *Traces:* D7. *Depends on:* Slice 3.
+- [ ] **Slice 6 — Unexplained-behavior detection (new capability, additive).**
+  - *Delivers:* logic + additive API surface that flags every session event with no correlation ≥
+    threshold to any action as `unexplained`; production DB/streaming path otherwise untouched.
+  - *Acceptance:* an unreported `/etc/passwd` read is flagged; every reported event is not.
+  - *Test:* `eval/unexplained.test.ts` + an API test for the additive surface.
+  - *DoD:* tests green · `keel eval` green · spec touched.
+  - *Traces:* D8(capability). *Depends on:* Slice 3.
+- [ ] **Slice 7 — Unexplained-behavior metrics.**
+  - *Delivers:* detection precision/recall against the labelled `true_unexplained` set, in the report.
+  - *Acceptance:* detection P/R equal hand-computed values on a labelled fixture.
+  - *Test:* `eval/unexplained-metrics.test.ts`.
+  - *DoD:* tests green · `keel eval` green.
+  - *Traces:* D8(full). *Depends on:* Slice 6.
+- [ ] **Slice 8 — Threshold sweep + committed baseline.**
+  - *Delivers:* a sweep emitting P/R at each threshold, a recommended threshold, and a committed
+    baseline metrics file.
+  - *Acceptance:* sweep output covers the threshold range and is structured; baseline file written.
+  - *Test:* `eval/sweep.test.ts`.
+  - *DoD:* tests green · `keel eval` green · baseline committed.
+  - *Traces:* D9(full). *Depends on:* Slices 3, 4.
+- [ ] **Slice 9 — Regression gate.**
+  - *Delivers:* the eval wired into CI/keel, failing when attribution F1 or unexplained recall drops
+    below the committed baseline beyond a configured tolerance.
+  - *Acceptance:* injecting a degraded config makes the eval exit non-zero, naming the offending metric.
+  - *Test:* `eval/gate.test.ts`.
+  - *DoD:* tests green · `keel eval` green · CI wired.
+  - *Traces:* D10. *Depends on:* Slice 8.
+
+**Risks carried:** (1) Slice 2 needs live Tetragon/k8s — infra confirmed available. (2) Labelling is
+subjective; mitigated by documented rules + an `uncertain` label excluded from P/R. (3) D7
+byte-identical vs float rounding — preserve the exact `Math.round(x*1000)/1000`. (4) Capability (ii)
+inherits (i)'s errors — sequenced last, guarded by the Slice 9 baseline gate.
 
 ## Non-goals (explicit — out of scope for this spec)
 

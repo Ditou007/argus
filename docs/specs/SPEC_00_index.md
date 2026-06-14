@@ -10,7 +10,7 @@ by the Plan phase (`/keel:plan`) and ticked off slice by slice during Build.
 
 | Spec | Subsystem | Status |
 |---|---|---|
-| [SPEC_01](./SPEC_01_correlation_accuracy.md) | Correlation engine — accuracy harness & unexplained-behavior detection | 🟡 Defined (awaiting Plan) |
+| [SPEC_01](./SPEC_01_correlation_accuracy.md) | Correlation engine — accuracy harness & unexplained-behavior detection | 🟢 Planned (Build in progress) |
 
 ## Conventions
 
