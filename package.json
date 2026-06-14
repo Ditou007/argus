@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI Agent Runtime Governance & Observability Platform",
+  "packageManager": "pnpm@10.13.1",
   "scripts": {
     "dev:ingestion": "pnpm --filter @argus/ingestion dev",
     "dev:api": "pnpm --filter @argus/api dev",
