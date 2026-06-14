@@ -43,6 +43,12 @@ else
 fi
 echo "  Tetragon DaemonSet ready"
 
+# Expose Tetragon's gRPC API to in-cluster pods. The Helm chart's Service only
+# exposes metrics (2112), not gRPC (54321) — without this the ingestion service
+# can never connect and no events are ever captured.
+kubectl apply -f "$SCRIPT_DIR/tetragon-grpc-service.yaml" > /dev/null
+echo "  Tetragon gRPC service exposed"
+
 # --- Step 3: Deploy Postgres + Redis ---
 echo ""
 echo "[3/8] Deploying Postgres and Redis..."

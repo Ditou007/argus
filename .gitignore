@@ -10,3 +10,6 @@ coverage/
 .turbo/
 data/
 *.tgz
+
+# Raw k8s capture (working artifact; curated labelled fixtures are committed instead)
+packages/eval/fixtures/raw/
