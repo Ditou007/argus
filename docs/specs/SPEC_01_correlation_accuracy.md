@@ -164,10 +164,11 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/runner.test.ts` (known-answer fixture) + `eval/schema.test.ts` (reject malformed).
   - *DoD:* tests green · `keel eval` green · within budget.
   - *Traces:* D1(partial), D3, D4(this fixture), D5. *Depends on:* —
-- [ ] **Slice 2 — Real seed fixture + multi-action corpus loader.** ⏳ Raw capture obtained: a live
-  `real_agent.py` run on kind+Tetragon produced 7 actions + 1061 events + 1068 correlations
-  (pod `real-agent-wl6xn`), preserved in `packages/eval/fixtures/raw/` (gitignored). Remaining:
-  curate + hand-label into a committed fixture.
+- [x] **Slice 2 — Real seed fixture + multi-action corpus loader.** ✅ `corpus-real.json` curated
+  from a live kind+Tetragon `real_agent.py` run: 94 real events (22 intent-matches, 16 uncertain, 56
+  noise) across all 5 action types, with a multi-action `parseCorpus` schema (`true_action_id` /
+  `uncertain`), a documented intent-based labelling rule, and a repeatable curation script. 20 tests
+  green.
   - *Delivers:* a frozen, hand-labelled fixture captured from a real `real_agent.py` run under
     Tetragon, covering all five action types; schema extended to multi-action sessions; documented,
     repeatable capture procedure.

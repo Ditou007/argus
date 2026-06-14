@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "eval": "tsx src/cli.ts",
+    "curate": "tsx src/curate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
