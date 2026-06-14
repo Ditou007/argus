@@ -94,10 +94,10 @@ Two deployment modes are supported. **Kubernetes is the reference path** — it 
 
 ### Prerequisites
 
-- Docker Desktop
+- Docker Desktop (running)
 - Node.js 20+
 - pnpm — `npm install -g pnpm`
-- For Kubernetes mode: `kind` and `helm` — `brew install kind helm`
+- For Kubernetes mode: `kubectl`, `kind`, and `helm` — `brew install kubectl kind helm`
 
 ### Kubernetes (recommended)
 
