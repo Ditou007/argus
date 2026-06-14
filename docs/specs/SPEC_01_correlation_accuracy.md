@@ -127,7 +127,7 @@ Each line is written to become a failing test in Build.
 Sequenced, value-first slices. `/keel:build` walks this top-down, ticking `[ ]` → `[x]` as each
 ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 15`).
 
-- [ ] **Slice 1 — Thin e2e: one synthetic fixture → one precision/recall number.**
+- [x] **Slice 1 — Thin e2e: one synthetic fixture → one precision/recall number.** ✅ `packages/eval` scores the `llm_call_decoy` fixture through the real `@argus/api` engine (no DB/DNS): true syscalls → conf 1.0, decoy `fd_install` → conf 0.481; at threshold 0.3, precision 2/3, recall 1.0. 12 tests green.
   - *Delivers:* `packages/eval` workspace package; a minimal Zod fixture schema; one hand-authored
     synthetic fixture (`llm_call` + a true `tcp_connect` event + the same-PID-in-window decoy
     `fd_install`); a runner that feeds it through the **real** `scoreEvent`/`parseActionHints` and

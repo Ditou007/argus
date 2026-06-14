@@ -31,6 +31,7 @@
   "devDependencies": {
     "@wednesday-sol/keel": "^0.14.0",
     "eslint": "^9",
-    "eslint-plugin-sonarjs": "^4"
+    "eslint-plugin-sonarjs": "^4",
+    "typescript-eslint": "^8.61.0"
   }
 }

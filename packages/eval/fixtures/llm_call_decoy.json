@@ -1,0 +1,61 @@
+{
+  "name": "llm_call_decoy",
+  "description": "An llm_call whose true syscalls are a tcp_connect + tcp_sendmsg to the resolved LLM IP, plus a same-PID in-window fd_install decoy that must be rejected. Hand-labelled answer key for attribution P/R.",
+  "action": {
+    "action_type": "llm_call",
+    "action_name": "anthropic.chat",
+    "input_summary": "POST https://api.anthropic.com/v1/messages",
+    "started_at": "2026-06-14T00:00:00.000Z",
+    "ended_at": "2026-06-14T00:00:00.100Z",
+    "agent_pid": 1000,
+    "pod_name": "agent-pod",
+    "expected_ips": ["203.0.113.10"]
+  },
+  "events": [
+    {
+      "id": 1,
+      "event_type": "process_kprobe",
+      "process_pid": 1000,
+      "process_binary": "/usr/bin/python3",
+      "function_name": "tcp_connect",
+      "event_time": "2026-06-14T00:00:00.050Z",
+      "raw_event": {
+        "process_kprobe": {
+          "process": { "pid": 1000 },
+          "args": [{ "sockArg": { "daddr": "203.0.113.10", "dport": 443 } }]
+        }
+      },
+      "true_match": true
+    },
+    {
+      "id": 2,
+      "event_type": "process_kprobe",
+      "process_pid": 1000,
+      "process_binary": "/usr/bin/python3",
+      "function_name": "tcp_sendmsg",
+      "event_time": "2026-06-14T00:00:00.050Z",
+      "raw_event": {
+        "process_kprobe": {
+          "process": { "pid": 1000 },
+          "args": [{ "sockArg": { "daddr": "203.0.113.10", "dport": 443 } }]
+        }
+      },
+      "true_match": true
+    },
+    {
+      "id": 3,
+      "event_type": "process_kprobe",
+      "process_pid": 1000,
+      "process_binary": "/usr/bin/python3",
+      "function_name": "fd_install",
+      "event_time": "2026-06-14T00:00:00.000Z",
+      "raw_event": {
+        "process_kprobe": {
+          "process": { "pid": 1000 },
+          "args": [{ "fileArg": { "path": "/tmp/scratch" } }]
+        }
+      },
+      "true_match": false
+    }
+  ]
+}
