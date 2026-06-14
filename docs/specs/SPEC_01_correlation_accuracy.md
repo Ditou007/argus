@@ -177,7 +177,12 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/corpus.test.ts` (loads real fixture, asserts 5 types, asserts full labelling).
   - *DoD:* tests green · `keel eval` green · capture doc committed.
   - *Traces:* D2. *Depends on:* Slice 1.
-- [ ] **Slice 3 — Per-`action_type` metrics + threshold-parameterized report.**
+- [x] **Slice 3 — Per-`action_type` metrics + threshold-parameterized report.** ✅ `scoreCorpus` +
+  `perActionTypeMetrics` + `formatCorpusReport` (CLI: `corpus-cli`). Real-corpus result: at the
+  engine's 0.3 band, `file_write` precision is **13%** (massive over-correlation); at **0.7** every
+  type reaches **100% precision**. Recall stays 100% at 0.7 for all but `file_read`. 33 tests green.
+  **→ This data deflates Slices 10 & 11** (see Real-run findings update) and points the real lever at
+  the confidence threshold (Slices 4, 8).
   - *Delivers:* precision/recall/F1 per `action_type` as a function of confidence threshold; a
     written report artifact.
   - *Acceptance:* metrics equal hand-computed values per type on a known fixture; report is
