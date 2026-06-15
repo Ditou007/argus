@@ -268,7 +268,9 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   the capability over the real corpus (strongly-attributed events never flagged; flagged events all
   below the high band). 51 tests green. *(Route semantics: population = the pod's events in the
   session window padded ±1s to match the engine's candidate window; `threshold` defaults to the high
-  band and is validated to `[0,1]`; an event is "explained" at confidence ≥ threshold.)*
+  band and is validated to `[0,1]`; an event is "explained" at confidence ≥ threshold.)* **Hardened
+  post-plan:** `routes/unexplained.http.test.ts` (supertest) now covers the real HTTP contract —
+  200 envelope, 404 unknown session, 400 bad threshold, threshold query param.
   - *Delivers:* logic + additive API surface that flags every session event with no correlation ≥
     threshold to any action as `unexplained`; production DB/streaming path otherwise untouched.
   - *Acceptance:* an unreported `/etc/passwd` read is flagged; every reported event is not.
