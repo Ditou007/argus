@@ -1,6 +1,7 @@
 import { createSignalRegistry } from "@argus/api/correlation/signal-registry";
 import { parseActionHints } from "@argus/api/correlation/action-parser";
 import type { EventCandidate, ActionWindow } from "@argus/api/correlation/types";
+import type { CorrelationConfig } from "@argus/api/correlation/config";
 import type { Corpus, CorpusAction, CorpusEvent } from "./corpus.js";
 
 /** One (action, event) pair scored by the real engine, carrying the event's ground truth. */
@@ -40,10 +41,11 @@ const toCandidate = (event: CorpusEvent): EventCandidate => ({
  * deterministic; mirrors what the production correlator does, one action at a time.
  * @function scoreCorpus
  * @param corpus - The labelled corpus to score.
+ * @param config - Optional engine config override; defaults to the shipped constants.
  * @returns One {@link CorpusScore} per (action, in-window event) pair.
  */
-export const scoreCorpus = (corpus: Corpus): CorpusScore[] => {
-  const registry = createSignalRegistry();
+export const scoreCorpus = (corpus: Corpus, config?: CorrelationConfig): CorpusScore[] => {
+  const registry = createSignalRegistry(config);
   const scores: CorpusScore[] = [];
 
   for (const action of corpus.actions) {

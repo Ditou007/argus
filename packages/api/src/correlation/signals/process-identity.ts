@@ -1,6 +1,5 @@
 import type { SignalMatcher } from "../types.js";
-
-const WEIGHT = 0.25;
+import type { CorrelationConfig } from "../config.js";
 
 // Extract nested fields from raw_event safely
 const getProcessPid = (raw: Record<string, unknown>, eventType: string): number | null => {
@@ -41,7 +40,9 @@ const getParentPid = (raw: Record<string, unknown>): number | null => {
   return null;
 };
 
-export const processIdentity: SignalMatcher = (event, _action, hints) => {
+/** Process-identity signal: how closely the event's process relates to the agent's. */
+export const processIdentity = (config: CorrelationConfig): SignalMatcher => (event, _action, hints) => {
+  const weight = config.weights.process_identity;
   const eventPid = event.process_pid ?? getProcessPid(event.raw_event, event.event_type);
   const parentPid = getParentPid(event.raw_event);
 
@@ -50,7 +51,7 @@ export const processIdentity: SignalMatcher = (event, _action, hints) => {
     return {
       signal_name: "process_identity",
       score: 1.0,
-      weight: WEIGHT,
+      weight,
       reason: `exact PID match (${eventPid})`,
     };
   }
@@ -60,7 +61,7 @@ export const processIdentity: SignalMatcher = (event, _action, hints) => {
     return {
       signal_name: "process_identity",
       score: 0.7,
-      weight: WEIGHT,
+      weight,
       reason: `child of agent (parent PID ${parentPid})`,
     };
   }
@@ -70,7 +71,7 @@ export const processIdentity: SignalMatcher = (event, _action, hints) => {
     return {
       signal_name: "process_identity",
       score: 0.4,
-      weight: WEIGHT,
+      weight,
       reason: `same pod, different PID (event: ${eventPid}, agent: ${hints.agent_pid})`,
     };
   }
@@ -78,7 +79,7 @@ export const processIdentity: SignalMatcher = (event, _action, hints) => {
   return {
     signal_name: "process_identity",
     score: 0,
-    weight: WEIGHT,
+    weight,
     reason: "no process relationship",
   };
 };

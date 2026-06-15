@@ -1,8 +1,16 @@
 import type { SignalMatcher } from "../types.js";
+import type { CorrelationConfig } from "../config.js";
 import { isNoisePath } from "../action-parser.js";
 
-const WEIGHT = 0.20;
 const FILE_FUNCTIONS = new Set(["fd_install", "sys_write", "sys_read"]);
+
+/** File-path only applies to file actions. */
+const isFileAction = (actionType: string): boolean =>
+  actionType === "file_read" || actionType === "file_write";
+
+/** Either path is a prefix of the other (expected /data/ vs event /data/report.pdf). */
+const isPrefixMatch = (eventPath: string, expectedPaths: readonly string[]): boolean =>
+  expectedPaths.some((expected) => eventPath.startsWith(expected) || expected.startsWith(eventPath));
 
 // Extract file path from raw kprobe event args
 const extractFilePath = (raw: Record<string, unknown>): string | null => {
@@ -22,83 +30,43 @@ const extractFilePath = (raw: Record<string, unknown>): string | null => {
   return null;
 };
 
-export const filePath: SignalMatcher = (event, _action, hints) => {
-  const isFileAction = hints.action_type === "file_read" || hints.action_type === "file_write";
+/** Score an extracted event path against the action's expected paths. */
+const scoreExtractedPath = (
+  eventPath: string,
+  expectedPaths: readonly string[]
+): { score: number; reason: string } => {
+  if (isNoisePath(eventPath)) return { score: 0.05, reason: `noise path: ${eventPath}` };
+  if (expectedPaths.length === 0) {
+    return { score: 0.5, reason: `file operation on ${eventPath} (no expected paths to compare)` };
+  }
+  if (expectedPaths.includes(eventPath)) return { score: 1.0, reason: `exact path match: ${eventPath}` };
+  if (isPrefixMatch(eventPath, expectedPaths)) return { score: 0.7, reason: `path prefix match: ${eventPath}` };
+  return { score: 0.1, reason: `unrelated path: ${eventPath}` };
+};
+
+/**
+ * File-path signal: does the event's file path match the action's expected paths?
+ * @function filePath
+ * @param config - Engine config supplying the file_path weight.
+ */
+export const filePath = (config: CorrelationConfig): SignalMatcher => (event, _action, hints) => {
+  const weight = config.weights.file_path;
 
   // If the action is not file-related, opt out
-  if (!isFileAction) {
+  if (!isFileAction(hints.action_type)) {
     return { signal_name: "file_path", score: 0, weight: 0, reason: "not a file action" };
   }
 
   // If this event is not a file function, low score
   if (!FILE_FUNCTIONS.has(event.function_name ?? "")) {
-    return {
-      signal_name: "file_path",
-      score: 0,
-      weight: WEIGHT,
-      reason: `${event.function_name} is not a file syscall`,
-    };
+    return { signal_name: "file_path", score: 0, weight, reason: `${event.function_name} is not a file syscall` };
   }
 
   const eventPath = extractFilePath(event.raw_event);
-
-  // No file path extractable
   if (!eventPath) {
-    return {
-      signal_name: "file_path",
-      score: 0.2,
-      weight: WEIGHT,
-      reason: "file function but no path extracted",
-    };
+    return { signal_name: "file_path", score: 0.2, weight, reason: "file function but no path extracted" };
   }
 
-  // Filter noise paths (Python internals, /proc/self, etc.)
-  if (isNoisePath(eventPath)) {
-    return {
-      signal_name: "file_path",
-      score: 0.05,
-      weight: WEIGHT,
-      reason: `noise path: ${eventPath}`,
-    };
-  }
-
-  // No expected paths to compare (agent didn't report specific files)
-  if (hints.expected_file_paths.length === 0) {
-    return {
-      signal_name: "file_path",
-      score: 0.5,
-      weight: WEIGHT,
-      reason: `file operation on ${eventPath} (no expected paths to compare)`,
-    };
-  }
-
-  // Exact match
-  if (hints.expected_file_paths.includes(eventPath)) {
-    return {
-      signal_name: "file_path",
-      score: 1.0,
-      weight: WEIGHT,
-      reason: `exact path match: ${eventPath}`,
-    };
-  }
-
-  // Prefix match (e.g., expected /data/, event /data/report.pdf)
-  const prefixMatch = hints.expected_file_paths.some(
-    (expected) => eventPath.startsWith(expected) || expected.startsWith(eventPath)
-  );
-  if (prefixMatch) {
-    return {
-      signal_name: "file_path",
-      score: 0.7,
-      weight: WEIGHT,
-      reason: `path prefix match: ${eventPath}`,
-    };
-  }
-
-  return {
-    signal_name: "file_path",
-    score: 0.1,
-    weight: WEIGHT,
-    reason: `unrelated path: ${eventPath}`,
-  };
+  const { score, reason } = scoreExtractedPath(eventPath, hints.expected_file_paths);
+  return { signal_name: "file_path", score, weight, reason };
 };

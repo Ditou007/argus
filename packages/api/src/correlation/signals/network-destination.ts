@@ -1,7 +1,11 @@
 import type { SignalMatcher } from "../types.js";
+import type { CorrelationConfig } from "../config.js";
 
-const WEIGHT = 0.25;
 const NETWORK_FUNCTIONS = new Set(["tcp_connect", "tcp_sendmsg"]);
+
+/** Network-destination only applies to actions that talk to the network. */
+const isNetworkAction = (actionType: string): boolean =>
+  actionType === "network_request" || actionType === "llm_call";
 
 // Extract sock_arg from raw kprobe event args
 const extractSockArg = (raw: Record<string, unknown>): { daddr: string; dport: number } | null => {
@@ -27,11 +31,12 @@ const extractSockArg = (raw: Record<string, unknown>): { daddr: string; dport: n
   return null;
 };
 
-export const networkDestination: SignalMatcher = (event, _action, hints) => {
-  const isNetworkAction = hints.action_type === "network_request" || hints.action_type === "llm_call";
+/** Network-destination signal: does the event's socket target match the action's? */
+export const networkDestination = (config: CorrelationConfig): SignalMatcher => (event, _action, hints) => {
+  const weight = config.weights.network_destination;
 
   // If the action is not network-related, opt out (don't penalize)
-  if (!isNetworkAction) {
+  if (!isNetworkAction(hints.action_type)) {
     return { signal_name: "network_destination", score: 0, weight: 0, reason: "not a network action" };
   }
 
@@ -40,7 +45,7 @@ export const networkDestination: SignalMatcher = (event, _action, hints) => {
     return {
       signal_name: "network_destination",
       score: 0,
-      weight: WEIGHT,
+      weight,
       reason: `${event.function_name} is not a network syscall`,
     };
   }
@@ -50,7 +55,7 @@ export const networkDestination: SignalMatcher = (event, _action, hints) => {
     return {
       signal_name: "network_destination",
       score: 0.3,
-      weight: WEIGHT,
+      weight,
       reason: "network function but no socket info extracted",
     };
   }
@@ -60,7 +65,7 @@ export const networkDestination: SignalMatcher = (event, _action, hints) => {
     return {
       signal_name: "network_destination",
       score: 1.0,
-      weight: WEIGHT,
+      weight,
       reason: `IP match: ${sock.daddr}:${sock.dport}`,
     };
   }
@@ -70,7 +75,7 @@ export const networkDestination: SignalMatcher = (event, _action, hints) => {
     return {
       signal_name: "network_destination",
       score: 0.4,
-      weight: WEIGHT,
+      weight,
       reason: `port match only: :${sock.dport} (IP ${sock.daddr} not in expected)`,
     };
   }
@@ -78,7 +83,7 @@ export const networkDestination: SignalMatcher = (event, _action, hints) => {
   return {
     signal_name: "network_destination",
     score: 0.1,
-    weight: WEIGHT,
+    weight,
     reason: `no destination match: ${sock.daddr}:${sock.dport}`,
   };
 };

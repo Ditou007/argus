@@ -3,11 +3,46 @@ import type { CorrelationResult, EventCandidate } from "./types.js";
 import { parseActionHints } from "./action-parser.js";
 import { createDnsCache } from "./dns-cache.js";
 import { createSignalRegistry } from "./signal-registry.js";
+import { DEFAULT_CORRELATION_CONFIG, type CorrelationConfig } from "./config.js";
 
 const dnsCache = createDnsCache();
 
-export const createCorrelator = (pool: pg.Pool) => {
-  const registry = createSignalRegistry();
+const CANDIDATE_COLUMNS = `id, event_type, process_pid, process_binary, function_name,
+                event_time, created_at, raw_event`;
+
+interface CandidateAction {
+  readonly pod_name: string | null;
+  readonly agent_pid: number;
+  readonly started_at: string;
+  readonly ended_at: string;
+}
+
+/**
+ * Build the candidate-event query: by pod when the action has one, else by PID.
+ * Both widen the action window by ±1s to tolerate ingestion/clock skew.
+ */
+const buildCandidateQuery = (action: CandidateAction): { text: string; values: unknown[] } => {
+  const filter = action.pod_name ? "pod_name = $1" : "process_pid = $1";
+  const key = action.pod_name ?? action.agent_pid;
+  const text = `SELECT ${CANDIDATE_COLUMNS}
+         FROM events
+         WHERE ${filter}
+           AND COALESCE(event_time, created_at) >= ($2::timestamptz - interval '1 second')
+           AND COALESCE(event_time, created_at) <= ($3::timestamptz + interval '1 second')
+         ORDER BY COALESCE(event_time, created_at) ASC
+         LIMIT 500`;
+  return { text, values: [key, action.started_at, action.ended_at] };
+};
+
+/**
+ * Build the DB-backed correlator. Fetches candidate events for an action and
+ * scores them through the signal registry bound to `config`.
+ * @function createCorrelator
+ * @param pool - Postgres pool for action/event queries.
+ * @param config - Engine weights/thresholds; defaults to the shipped constants.
+ */
+export const createCorrelator = (pool: pg.Pool, config: CorrelationConfig = DEFAULT_CORRELATION_CONFIG) => {
+  const registry = createSignalRegistry(config);
 
   const correlateAction = async (actionId: string): Promise<CorrelationResult> => {
     // 1. Fetch action + session
@@ -45,29 +80,8 @@ export const createCorrelator = (pool: pg.Pool) => {
     }
 
     // 4. Fetch candidate events (wider window: +/- 1 second padding)
-    const candidateQuery = action.pod_name
-      ? `SELECT id, event_type, process_pid, process_binary, function_name,
-                event_time, created_at, raw_event
-         FROM events
-         WHERE pod_name = $1
-           AND COALESCE(event_time, created_at) >= ($2::timestamptz - interval '1 second')
-           AND COALESCE(event_time, created_at) <= ($3::timestamptz + interval '1 second')
-         ORDER BY COALESCE(event_time, created_at) ASC
-         LIMIT 500`
-      : `SELECT id, event_type, process_pid, process_binary, function_name,
-                event_time, created_at, raw_event
-         FROM events
-         WHERE process_pid = $1
-           AND COALESCE(event_time, created_at) >= ($2::timestamptz - interval '1 second')
-           AND COALESCE(event_time, created_at) <= ($3::timestamptz + interval '1 second')
-         ORDER BY COALESCE(event_time, created_at) ASC
-         LIMIT 500`;
-
-    const candidateParams = action.pod_name
-      ? [action.pod_name, action.started_at, action.ended_at]
-      : [action.agent_pid, action.started_at, action.ended_at];
-
-    const candidateResult = await pool.query(candidateQuery, candidateParams);
+    const candidateQuery = buildCandidateQuery(action);
+    const candidateResult = await pool.query(candidateQuery.text, candidateQuery.values);
 
     const candidates: EventCandidate[] = candidateResult.rows.map((row) => ({
       id: row.id,
@@ -116,8 +130,8 @@ export const createCorrelator = (pool: pg.Pool) => {
         [actionId, corr.event_id, corr.confidence, corr.method, JSON.stringify(corr.signal_scores)]
       );
 
-      if (corr.confidence > 0.7) highConf++;
-      else if (corr.confidence >= 0.3) medConf++;
+      if (corr.confidence > config.bands.high) highConf++;
+      else if (corr.confidence >= config.bands.medium) medConf++;
       else lowConf++;
     }
 
