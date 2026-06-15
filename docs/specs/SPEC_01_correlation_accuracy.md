@@ -2,12 +2,13 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–7 done (eval package, real
-corpus, per-type metrics, calibration, magic-numbers→config, unexplained-behavior detection +
-metrics). Both capabilities now measured: attribution 100% precision at the 0.7 band, unexplained
-detection 93.3% precision / 100% recall there. Calibration confirms the real lever is the confidence
-threshold (Slices 8–9), deflating the arm64 + container-PID engine fixes (Slices 10–11) — see
-**Real-run findings**.
+**Status:** 🟢 Build — core plan complete. Slices 1–9 done (eval package, real corpus, per-type
+metrics, calibration, magic-numbers→config, unexplained detection + metrics, threshold sweep +
+committed baseline, regression gate in CI). Both capabilities measured, justified by a data-driven
+threshold (**0.7**, committed `fixtures/baseline.json`: attribution F1 0.90 / 100% precision,
+unexplained 93.3% precision / 100% recall) and protected by `eval-gate` CI. Remaining: Slices 10–11
+(arm64 syscall + container-PID engine fixes) — **deflated** by the data (the threshold, not these
+fixes, is the lever), kept open for cross-env correctness; see **Real-run findings**.
 
 ---
 
@@ -135,12 +136,14 @@ Each line is written to become a failing test in Build.
   unreported read → flagged; all reported events → not flagged)* ✅ Capability in Slice 6
   (`detectUnexplained`); measured against the `true_action_id === null` set in Slice 7
   (`unexplainedMetrics`, hand-computed P/R pinned) — real corpus @ 0.7: precision 93.3%, recall 100%.
-- [ ] **D9 — Sweep recommends and a baseline is recorded.** A threshold sweep emits precision/recall
+- [x] **D9 — Sweep recommends and a baseline is recorded.** A threshold sweep emits precision/recall
   at each threshold, writes a recommended threshold, and writes a committed baseline metrics file.
-  *(test: sweep output is structured and covers the threshold range; baseline file is written)*
-- [ ] **D10 — The gate catches regressions.** The eval fails when attribution F1 or unexplained
+  *(test: sweep output is structured and covers the threshold range; baseline file is written)* ✅
+  `sweep.ts` + `sweep-cli.ts`; committed `fixtures/baseline.json` (recommended 0.7).
+- [x] **D10 — The gate catches regressions.** The eval fails when attribution F1 or unexplained
   recall drops below the committed baseline beyond the configured tolerance. *(test: inject a
-  degraded config → eval exits non-zero with the offending metric named)*
+  degraded config → eval exits non-zero with the offending metric named)* ✅ `gate.ts` +
+  `gate-cli.ts` + `.github/workflows/eval-gate.yml`; degraded-config test flips the gate non-ok.
 - [ ] **D11 — arm64 write syscalls correlate (fix).** Using the real captured fixture, a
   `file_write` action's `__arm64_sys_write` events are matched by the file/function signals. Recall
   for the write syscall is 0 **before** the normalization fix and > 0 **after**. *(test: real
@@ -254,14 +257,24 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/unexplained-metrics.test.ts`.
   - *DoD:* tests green · `keel eval` green.
   - *Traces:* D8(full). *Depends on:* Slice 6.
-- [ ] **Slice 8 — Threshold sweep + committed baseline.**
+- [x] **Slice 8 — Threshold sweep + committed baseline.** ✅ `sweepThresholds` (micro-averaged
+  attribution P/R/F1 + unexplained P/R at each threshold) + `recommendThreshold` (max attribution F1,
+  tie → higher threshold for precision) + `buildBaseline`; `sweep-cli` prints the curve and writes the
+  committed `fixtures/baseline.json`. Recommended **0.7**: attribution precision 100% / recall 81.8% /
+  F1 0.90, unexplained precision 93.3% / recall 100%. The full curve makes the tradeoff explicit
+  (≤0.4 = noise; 0.6–0.7 = the sweet spot; ≥0.8 = recall collapse). 51 eval tests green.
   - *Delivers:* a sweep emitting P/R at each threshold, a recommended threshold, and a committed
     baseline metrics file.
   - *Acceptance:* sweep output covers the threshold range and is structured; baseline file written.
   - *Test:* `eval/sweep.test.ts`.
   - *DoD:* tests green · `keel eval` green · baseline committed.
   - *Traces:* D9(full). *Depends on:* Slices 3, 4.
-- [ ] **Slice 9 — Regression gate.**
+- [x] **Slice 9 — Regression gate.** ✅ `checkRegression(current, baseline, tolerance)` fails when
+  attribution F1 or unexplained recall falls more than tolerance (default 0.05) below the committed
+  baseline, naming each offending metric; `gate-cli` scores the corpus at the baseline threshold and
+  exits non-zero on regression. Wired into CI via `.github/workflows/eval-gate.yml` (+ `eval:gate`
+  npm script). D10 acceptance proven: a degraded config (`discardThreshold 0.99`) collapses F1 and the
+  gate flips non-ok naming "attribution F1". 62 eval tests green; live gate: OK @ 0.7.
   - *Delivers:* the eval wired into CI/keel, failing when attribution F1 or unexplained recall drops
     below the committed baseline beyond a configured tolerance.
   - *Acceptance:* injecting a degraded config makes the eval exit non-zero, naming the offending metric.

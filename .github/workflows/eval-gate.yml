@@ -1,0 +1,30 @@
+name: eval-gate
+
+# Correlation-accuracy regression gate (SPEC_01). Runs the eval harness tests
+# and fails the build if attribution F1 or unexplained recall drops below the
+# committed baseline (packages/eval/fixtures/baseline.json) beyond tolerance.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "packages/eval/**"
+      - "packages/api/src/correlation/**"
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: eval harness tests
+        run: pnpm --filter @argus/eval test
+      - name: correlation-accuracy regression gate
+        run: pnpm --filter @argus/eval run eval:gate
