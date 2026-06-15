@@ -2,10 +2,12 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–6 done (eval package, real
-corpus, per-type metrics, calibration, magic-numbers→config, unexplained-behavior detection).
-Calibration confirms the real lever is the confidence threshold (Slices 8–9), deflating the arm64 +
-container-PID engine fixes (Slices 10–11) — see **Real-run findings**.
+**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–7 done (eval package, real
+corpus, per-type metrics, calibration, magic-numbers→config, unexplained-behavior detection +
+metrics). Both capabilities now measured: attribution 100% precision at the 0.7 band, unexplained
+detection 93.3% precision / 100% recall there. Calibration confirms the real lever is the confidence
+threshold (Slices 8–9), deflating the arm64 + container-PID engine fixes (Slices 10–11) — see
+**Real-run findings**.
 
 ---
 
@@ -127,12 +129,12 @@ Each line is written to become a failing test in Build.
   pre/post extraction is identical; changing a config weight changes the score)* ✅
   `characterization.test.ts` — golden-master fingerprint byte-identical across the extraction; weight
   change shifts scores. Constants in `correlation/config.ts`.
-- [ ] **D8 — Unexplained behavior is detected.** Given a labelled session, detection flags exactly
+- [x] **D8 — Unexplained behavior is detected.** Given a labelled session, detection flags exactly
   the events with no correlation ≥ threshold to any action and matches the `true_unexplained` set:
   an unreported `/etc/passwd` read is flagged; every reported event is not. *(test: fixture with 1
-  unreported read → flagged; all reported events → not flagged)* 🟡 Capability delivered in Slice 6
-  (`detectUnexplained` + `eval/unexplained.test.ts` + API unit tests); matching the labelled
-  `true_unexplained` set as a measured metric lands in Slice 7.
+  unreported read → flagged; all reported events → not flagged)* ✅ Capability in Slice 6
+  (`detectUnexplained`); measured against the `true_action_id === null` set in Slice 7
+  (`unexplainedMetrics`, hand-computed P/R pinned) — real corpus @ 0.7: precision 93.3%, recall 100%.
 - [ ] **D9 — Sweep recommends and a baseline is recorded.** A threshold sweep emits precision/recall
   at each threshold, writes a recommended threshold, and writes a committed baseline metrics file.
   *(test: sweep output is structured and covers the threshold range; baseline file is written)*
@@ -242,7 +244,11 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/unexplained.test.ts` + an API test for the additive surface.
   - *DoD:* tests green · `keel eval` green · spec touched.
   - *Traces:* D8(capability). *Depends on:* Slice 3.
-- [ ] **Slice 7 — Unexplained-behavior metrics.**
+- [x] **Slice 7 — Unexplained-behavior metrics.** ✅ `unexplainedMetrics(events, scores, threshold)`
+  measures detection precision/recall against the ground-truth `true_action_id === null` set (uncertain
+  excluded); `formatUnexplainedReport` + wired into `corpus-cli`. Real-corpus result @ 0.7: detection
+  **precision 93.3% (tp=56 fp=4), recall 100% (fn=0)** — at the high band the detector surfaces every
+  truly-unexplained event with only 4 reported-event false positives. 45 eval tests green.
   - *Delivers:* detection precision/recall against the labelled `true_unexplained` set, in the report.
   - *Acceptance:* detection P/R equal hand-computed values on a labelled fixture.
   - *Test:* `eval/unexplained-metrics.test.ts`.
