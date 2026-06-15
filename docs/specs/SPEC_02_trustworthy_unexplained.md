@@ -4,7 +4,7 @@
 (identity + unexplained productisation) · `k8s/policies/**` + `policies/**` (TracingPolicies, D14) ·
 `sample-agent/argus_sdk.py` (host-PID + OTel-GenAI format) · `packages/eval/**` (re-capture validation).
 **Last updated:** 2026-06-15
-**Status:** 🟢 Define — spec complete, zero `[OPEN]` markers. Ready for `/keel:plan` (slicing).
+**Status:** 🟢 Planned — 8-slice breakdown committed in `## Plan`. Ready for `/keel:build` (Slice 1 = T0 real-data capture).
 
 ---
 
@@ -168,6 +168,60 @@ the session/action-correlation fields OTel has no concept of. The API ingests th
   legacy-vs-OTel.)*
 - [ ] **Gate stays green.** `keel eval` passes; SPEC_01's committed baseline (attribution F1 0.90 /
   unexplained 93.3% precision / 100% recall) does not regress, and new fixtures extend it.
+
+---
+
+## Plan (slice breakdown — `/keel:build` walks this top-down)
+
+Dependency-ordered, value-first vertical slices. Each ships independently, fits the PR-size budget,
+and traces to a `## Done` line. **Close calls:** T2 (Slices 3–5) lands before D14/D15 — it's
+install-agnostic, offline, and demoable on the reads + network data we already capture, so the
+headline product isn't blocked behind flaky live-capture slices; profile + risk function are one
+slice (the profile is how the risk function gets its weights). **Top risks:** live capture is
+environment-/arch-coupled (mitigate: capture once, freeze as fixture, gate runs offline); **D15 is
+the scary slice** — host-mappable PID inside a container may need Downward API / `/proc` mapping /
+Tetragon host-PID join and may warrant a spike; D14 fd→path depends on Tetragon arg extraction in
+our kernel build.
+
+- [ ] **Slice 1 — Baseline real-data capture & gap characterisation** *(T0)* · **Delivers:** frozen
+  SPEC_02 baseline corpus from a fresh k8s capture + written 3-gap characterisation in this spec ·
+  **Acceptance:** corpus has the child `curl` syscall event but lacks its parent `sh`/`curl` exec
+  events under the current filter; writes show no path; agent syscalls show container PID 1 ·
+  **Test:** fixture presence/shape assertion in `packages/eval` · **DoD:** test green · `keel eval`
+  green · spec characterisation updated · within PR budget · **Depends on:** —
+- [ ] **Slice 2 — Pod-scoped ingestion filter** *(T1)* · **Delivers:** `shouldIngest` keeps the whole
+  agent process tree · **Acceptance:** `true` for agent-pod child `sh`/`curl` exec; `false` for
+  argus-own-pod + infra-noise · **Test:** unit over synthetic `TetragonEvent`s · **DoD:** test green ·
+  `keel eval` green · `event-filter.ts` + spec touched · **Depends on:** 1
+- [ ] **Slice 3 — Risk function + configurable sensitivity profile** *(T2.1)* · **Delivers:** `risk =
+  sensitivity × (1 − best_confidence)` with a shipped default profile via a profile schema ·
+  **Acceptance:** HIGH unexplained event > LOW; consumer profile demoting `~/.ssh`→LOW changes its
+  score; invalid profile fails validation · **Test:** unit on risk + profile loader · **DoD:** test
+  green · `keel eval` green · within budget · **Depends on:** —
+- [ ] **Slice 4 — Egress allowlist (declared ∪ config)** *(T2.2)* · **Delivers:** network-dest
+  sensitivity from session-declared `network_request`s ∪ static config · **Acceptance:** connect to
+  declared → not HIGH; config-baseline → not HIGH; neither → HIGH · **Test:** unit, three-connect
+  case · **DoD:** test green · `keel eval` green · **Depends on:** 3
+- [ ] **Slice 5 — Coverage score + risk-ranked triage feed** *(T2.3)* · **Delivers:** `GET
+  /sessions/:id/unexplained` returns `{total, explained, unexplained, coverage_ratio, risk_score,
+  events[]}` sorted by risk · **Acceptance:** unexplained `~/.ssh/id_rsa` read ranks above `/tmp/x`
+  write; zero-event session → ratio 1.0, empty feed · **Test:** integration on endpoint contract ·
+  **DoD:** test green · `keel eval` green · spec touched · **Depends on:** 3, 4
+- [ ] **Slice 6 — D14: write events carry fd→path** *(T3)* · **Delivers:** TracingPolicy (shipped in
+  the install) + ingestion threading so `*_sys_write` → true `file_write` matches · **Acceptance:**
+  fresh re-capture; a write attributes to its `file_write` action at confidence ≥ 0.7 · **Test:**
+  re-captured fixture through the real engine · **DoD:** test green · `keel eval` green · policy +
+  spec touched · **Depends on:** 1, 2
+- [ ] **Slice 7 — D15: host/namespaced PID as portable identity** *(T4)* · **Delivers:** agent host
+  PID captured; `process-identity` exact-matches the agent's own syscalls (1.0), no longer
+  pod-name-only · **Acceptance:** fresh re-capture; exact-PID path fires; identity unit keyed on host
+  PID · **Test:** re-captured fixture + identity unit · **DoD:** test green · `keel eval` green ·
+  **Depends on:** 1, 2 · **⚠ may need a spike first** (host-PID mechanism unproven)
+- [ ] **Slice 8 — SDK emits OTel-GenAI hybrid format** *(T5)* · **Delivers:** `gen_ai.*` spans (behind
+  `OTEL_SEMCONV_STABILITY_OPT_IN`) + `argus.*` extension; API ingests both · **Acceptance:** SDK
+  emits spec-conformant attributes per action type; API correlates legacy vs OTel identically ·
+  **Test:** SDK attribute test + API parity test · **DoD:** test green · `keel eval` green ·
+  **Depends on:** —
 
 ---
 
