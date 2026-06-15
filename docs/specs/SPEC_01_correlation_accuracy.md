@@ -2,13 +2,15 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Build — core plan complete. Slices 1–9 done (eval package, real corpus, per-type
-metrics, calibration, magic-numbers→config, unexplained detection + metrics, threshold sweep +
-committed baseline, regression gate in CI). Both capabilities measured, justified by a data-driven
-threshold (**0.7**, committed `fixtures/baseline.json`: attribution F1 0.90 / 100% precision,
-unexplained 93.3% precision / 100% recall) and protected by `eval-gate` CI. Remaining: Slices 10–11
-(arm64 syscall + container-PID engine fixes) — **deflated** by the data (the threshold, not these
-fixes, is the lever), kept open for cross-env correctness; see **Real-run findings**.
+**Status:** 🟢 Build — core plan complete + cross-arch fix. Slices 1–10 done (eval package, real
+corpus, per-type metrics, calibration, magic-numbers→config, unexplained detection + metrics,
+threshold sweep + committed baseline, regression gate in CI, arch-aware syscall matching). Both
+capabilities measured, justified by a data-driven threshold (**0.7**, committed
+`fixtures/baseline.json`: attribution F1 0.90 / 100% precision, unexplained 93.3% precision / 100%
+recall) and protected by `eval-gate` CI. Slice 10 shipped arch normalization (cross-arch correctness)
+but the harness showed it recovers no recall here — the real write-attribution blocker is the kprobe
+not capturing fd/path (**D14**, tracked → SPEC_02 candidate). Remaining: Slice 11 (container-PID),
+then **D14** is the genuinely high-value follow-up. See **Real-run findings**.
 
 ---
 
@@ -144,10 +146,23 @@ Each line is written to become a failing test in Build.
   recall drops below the committed baseline beyond the configured tolerance. *(test: inject a
   degraded config → eval exits non-zero with the offending metric named)* ✅ `gate.ts` +
   `gate-cli.ts` + `.github/workflows/eval-gate.yml`; degraded-config test flips the gate non-ok.
-- [ ] **D11 — arm64 write syscalls correlate (fix).** Using the real captured fixture, a
-  `file_write` action's `__arm64_sys_write` events are matched by the file/function signals. Recall
-  for the write syscall is 0 **before** the normalization fix and > 0 **after**. *(test: real
-  fixture, assert `__arm64_sys_write` recall before/after; assert `sys_write` still matches too)*
+- [x] **D11 — architecture-aware syscall matching (reframed by the data).** The file/function
+  signals normalize the kernel symbol so `__arm64_sys_write` / `__x64_sys_write` / `__ia32_…` /
+  `__…compat_sys_…` all match the bare `sys_write` (`correlation/syscall.ts`). *(test:
+  `eval/arch-syscall.test.ts` — arm64/x64/bare score identically; a non-file syscall still scores 0;
+  `syscall.test.ts` covers the normalization across arches.)* **⚠ The original acceptance — "write
+  recall 0 → >0 on the real fixture" — does NOT hold and was retired:** every `__arm64_sys_write` in
+  the corpus is path-less (size-only) and labelled noise, and the truly-attributed file_write events
+  are `fd_install`. So this fix is **cross-arch correctness** (an x86 deploy needs it; it would
+  silently degrade off arm64) and is byte-neutral at the 0.7 baseline — it recovers **no** recall
+  here. The real blocker to file_write attribution is captured as **D14** below.
+- [ ] **D14 — write events must carry an fd/path to be attributable (real fix, tracked).** Tetragon's
+  `sys_write` kprobe in this setup captures only the size arg, so writes have no path/fd and cannot be
+  attributed to a specific file — they fall to the noise set regardless of arch normalization (D11).
+  The fix is a **tracing-policy / ingestion change** (capture the write fd→path), validated by a fresh
+  capture where `__…sys_write` events become true file_write matches. Out of scope for this spec's
+  scoring core (like D13); a strong **SPEC_02** candidate. *(acceptance: a re-captured corpus where
+  write events carry a path; write recall > 0 for a file_write action.)*
 - [ ] **D12 — container-PID case handled (fix).** With `agent_pid` = a container PID (`1`) and
   host-PID events, identity no longer silently dead-ends at same-pod=0.4 for the agent's own
   syscalls; attribution recall on the real fixture improves measurably after the fix. *(test: real
@@ -281,15 +296,24 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/gate.test.ts`.
   - *DoD:* tests green · `keel eval` green · CI wired.
   - *Traces:* D10. *Depends on:* Slice 8.
-- [ ] **Slice 10 — Fix: architecture-aware syscall matching.**
-  - *Delivers:* the file/function/network signals + `action-parser` match the kernel symbol
-    regardless of the `__<arch>_` prefix (`__arm64_sys_write` / `__x64_sys_write` / `sys_write`),
-    via a normalization helper read by the signals.
-  - *Acceptance:* on the real fixture, `__arm64_sys_write` recall is 0 before and > 0 after;
-    `sys_write` still matches; no other signal regresses (characterization on the synthetic corpus).
-  - *Test:* `eval/arch-syscall.test.ts` (before/after recall on the real fixture).
+- [x] **Slice 10 — Fix: architecture-aware syscall matching.** ✅ `correlation/syscall.ts`
+  `normalizeSyscall` extracts the canonical `sys_<name>` core (arch/compat-agnostic by construction);
+  the file-path + function-relevance signals match on the normalized core, keeping the raw symbol in
+  `reason` for observability. **The eval harness disproved the slice's premise:** all 22
+  `__arm64_sys_write` in the corpus are path-less, size-only, and labelled noise (true file_write =
+  `fd_install`), so the fix recovers **no recall** here — it raised those noise events 0.37 → 0.56
+  (still < 0.7, baseline unchanged). Shipped anyway as **cross-arch correctness** (arm64/x64/ia32/
+  compat) — leaving it unfixed silently degrades any non-arm64 deploy. The real blocker (write
+  fd/path capture) is tracked as **D14**. 65 eval tests green; golden master updated for the
+  intentional confidence shift.
+  - *Delivers:* the file/function signals match the kernel symbol regardless of the `__<arch>_`
+    prefix via `normalizeSyscall`. (Network keys on `tcp_*` kernel functions, not arch-prefixed
+    syscalls; `action-parser`'s expected lists are already bare — neither needed changes.)
+  - *Acceptance (reframed):* arm64/x64/bare write syscalls score identically as file ops; a non-file
+    syscall still scores 0; the synthetic decoy corpus is unaffected (no arch-prefixed syscalls).
+  - *Test:* `eval/arch-syscall.test.ts` + `api/correlation/syscall.test.ts`.
   - *DoD:* tests green · `keel eval` green · spec touched (correlation code changed).
-  - *Traces:* D11. *Depends on:* Slice 2 (real fixture), Slice 3 (metrics).
+  - *Traces:* D11 (reframed) + D14 (tracked). *Depends on:* Slice 2 (real fixture), Slice 3 (metrics).
 - [ ] **Slice 11 — Fix: container-PID reality.**
   - *Delivers:* `process_identity` no longer treats exact-PID as dominant when the agent PID is a
     container PID; identity is derived from pod + the namespaced PID where available, so the agent's
@@ -333,9 +357,13 @@ breaking the Node-20 image build, and `setup.sh` never applying `tetragon-grpc-s
 produced the first real correlation data and surfaced four scoring-fidelity issues that reshaped the
 plan:
 
-1. **arm64 syscall names.** Real write events are `__arm64_sys_write` (340 of them), but the signals
-   hardcode `sys_write` → that signal never fires on arm64. → Slice 10 (fix). Vindicates seeding
-   fixtures from real captures rather than idealized synthetic names.
+1. **arm64 syscall names.** Real write events are `__arm64_sys_write`, but the signals hardcoded
+   `sys_write` → that signal never fired on arm64. → Slice 10 fixed via `normalizeSyscall`
+   (cross-arch). **Deeper finding (Slice 10 build):** the harness showed those writes are also
+   **path-less** (the kprobe captured only the size arg) and labelled noise, so arch normalization
+   alone recovers no recall — making writes attributable needs the write fd/path captured at the
+   tracing layer (→ **D14**, a SPEC_02 candidate). Vindicates seeding fixtures from real captures
+   over idealized synthetic names — twice over.
 2. **Container PID.** The SDK reports `agent_pid=1` (container namespace); Tetragon reports host
    PIDs → `process_identity` exact-match is dead in k8s, always same-pod=0.4. → Slice 11 (fix).
 3. **Over-correlation.** One `httpbin` GET drew 98 correlated events (62 low-confidence) — the false-
