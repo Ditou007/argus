@@ -1,6 +1,7 @@
 import type { SignalMatcher } from "../types.js";
 import type { CorrelationConfig } from "../config.js";
 import { isNoisePath } from "../action-parser.js";
+import { normalizeSyscall } from "../syscall.js";
 
 const FILE_FUNCTIONS = new Set(["fd_install", "sys_write", "sys_read"]);
 
@@ -57,8 +58,9 @@ export const filePath = (config: CorrelationConfig): SignalMatcher => (event, _a
     return { signal_name: "file_path", score: 0, weight: 0, reason: "not a file action" };
   }
 
-  // If this event is not a file function, low score
-  if (!FILE_FUNCTIONS.has(event.function_name ?? "")) {
+  // If this event is not a file function, low score (arch-normalized so
+  // __arm64_sys_write / __x64_sys_write match the bare sys_write set)
+  if (!FILE_FUNCTIONS.has(normalizeSyscall(event.function_name))) {
     return { signal_name: "file_path", score: 0, weight, reason: `${event.function_name} is not a file syscall` };
   }
 

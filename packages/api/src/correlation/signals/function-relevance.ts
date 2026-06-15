@@ -1,5 +1,6 @@
 import type { SignalMatcher, SignalResult } from "../types.js";
 import type { CorrelationConfig } from "../config.js";
+import { normalizeSyscall } from "../syscall.js";
 
 const PROCESS_LIFECYCLE = new Set(["process_exec", "process_exit"]);
 const NETWORK_FUNCTIONS = new Set(["tcp_connect", "tcp_sendmsg"]);
@@ -33,7 +34,8 @@ const isMisplacedWrite = (fn: string, actionType: string): boolean =>
 /** Function-relevance signal: does the event's syscall fit the reported action? */
 export const functionRelevance = (config: CorrelationConfig): SignalMatcher => (event, _action, hints) => {
   const weight = config.weights.function_relevance;
-  const fn = event.function_name ?? "";
+  const fn = event.function_name ?? ""; // raw symbol, kept for the human-readable reason
+  const norm = normalizeSyscall(fn); // arch-independent core used for matching
   const eventType = event.event_type;
   const actionType = hints.action_type;
   const result = (score: number, reason: string): SignalResult => ({
@@ -46,14 +48,15 @@ export const functionRelevance = (config: CorrelationConfig): SignalMatcher => (
   const lifecycle = scoreProcessLifecycle(eventType, actionType);
   if (lifecycle) return result(lifecycle.score, lifecycle.reason);
 
-  if (hints.expected_functions.includes(fn)) return result(SCORE_EXPECTED, `${fn} expected for ${actionType}`);
+  if (hints.expected_functions.includes(norm)) return result(SCORE_EXPECTED, `${fn} expected for ${actionType}`);
 
+  // fd_install is a kernel function, not a syscall wrapper — no arch variant, so compare the raw name
   if (fn === "fd_install") return result(SCORE_FD_INSTALL, "fd_install is generic (file descriptor allocation)");
 
-  if (isMisplacedNetworkFn(fn, actionType)) return result(SCORE_MISPLACED_NET, `${fn} unlikely for ${actionType}`);
+  if (isMisplacedNetworkFn(norm, actionType)) return result(SCORE_MISPLACED_NET, `${fn} unlikely for ${actionType}`);
 
-  if (isMisplacedWrite(fn, actionType)) {
-    return result(SCORE_MISPLACED_WRITE, `sys_write with non-write action ${actionType}`);
+  if (isMisplacedWrite(norm, actionType)) {
+    return result(SCORE_MISPLACED_WRITE, `${fn} with non-write action ${actionType}`);
   }
 
   return result(SCORE_NEUTRAL, `${fn || eventType} has neutral relevance to ${actionType}`);
