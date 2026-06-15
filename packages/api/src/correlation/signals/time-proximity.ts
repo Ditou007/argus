@@ -1,17 +1,21 @@
 import type { SignalMatcher } from "../types.js";
+import type { CorrelationConfig } from "../config.js";
 
-const WEIGHT = 0.15;
-const CLOCK_SKEW_MS = 500;
-const MIN_WINDOW_MS = 200; // Pad short actions
+const INSIDE_WINDOW_FLOOR = 0.5; // minimum score for any event inside the window
+const SKEW_SCORE_SCALE = 0.3; // peak score at the window edge, decaying to 0 at the skew limit
 
-export const timeProximity: SignalMatcher = (event, action) => {
+/** Time-proximity signal: closeness of the event to the action's (padded) window. */
+export const timeProximity = (config: CorrelationConfig): SignalMatcher => (event, action) => {
+  const weight = config.weights.time_proximity;
+  const { clockSkewMs, minWindowMs, minActionMs, gaussianCoefficient } = config.time;
+
   const eventTime = (event.event_time ?? event.created_at).getTime();
   const start = action.started_at.getTime();
   const end = action.ended_at.getTime();
   const duration = end - start;
 
   // Widen very short windows
-  const padding = duration < 100 ? MIN_WINDOW_MS : 0;
+  const padding = duration < minActionMs ? minWindowMs : 0;
   const windowStart = start - padding;
   const windowEnd = end + padding;
   const windowDuration = windowEnd - windowStart;
@@ -23,11 +27,11 @@ export const timeProximity: SignalMatcher = (event, action) => {
     const distFromCenter = Math.abs(eventTime - center);
     const halfWindow = windowDuration / 2;
     const normalized = distFromCenter / halfWindow; // 0 at center, 1 at edge
-    const score = Math.exp(-2 * normalized * normalized); // Gaussian decay
+    const score = Math.exp(gaussianCoefficient * normalized * normalized); // Gaussian decay
     return {
       signal_name: "time_proximity",
-      score: Math.max(score, 0.5), // Floor at 0.5 if inside window
-      weight: WEIGHT,
+      score: Math.max(score, INSIDE_WINDOW_FLOOR), // Floor if inside window
+      weight,
       reason: `${Math.round(distFromCenter)}ms from window center`,
     };
   }
@@ -38,12 +42,12 @@ export const timeProximity: SignalMatcher = (event, action) => {
     Math.abs(eventTime - windowEnd)
   );
 
-  if (distOutside <= CLOCK_SKEW_MS) {
-    const score = 0.3 * (1 - distOutside / CLOCK_SKEW_MS);
+  if (distOutside <= clockSkewMs) {
+    const score = SKEW_SCORE_SCALE * (1 - distOutside / clockSkewMs);
     return {
       signal_name: "time_proximity",
       score,
-      weight: WEIGHT,
+      weight,
       reason: `${Math.round(distOutside)}ms outside window (clock skew tolerance)`,
     };
   }
@@ -51,7 +55,7 @@ export const timeProximity: SignalMatcher = (event, action) => {
   return {
     signal_name: "time_proximity",
     score: 0,
-    weight: WEIGHT,
+    weight,
     reason: `${Math.round(distOutside)}ms outside window`,
   };
 };

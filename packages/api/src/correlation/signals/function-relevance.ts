@@ -1,74 +1,60 @@
-import type { SignalMatcher } from "../types.js";
+import type { SignalMatcher, SignalResult } from "../types.js";
+import type { CorrelationConfig } from "../config.js";
 
-const WEIGHT = 0.15;
+const PROCESS_LIFECYCLE = new Set(["process_exec", "process_exit"]);
+const NETWORK_FUNCTIONS = new Set(["tcp_connect", "tcp_sendmsg"]);
 
-export const functionRelevance: SignalMatcher = (event, _action, hints) => {
+const SCORE_EXPECTED = 1.0; // the kprobe function is exactly what the action expects
+const SCORE_TOOL_USE = 1.0; // exec/exit during a tool_use action
+const SCORE_FD_INSTALL = 0.4; // generic file-descriptor allocation
+const SCORE_LIFECYCLE = 0.3; // exec/exit unrelated to a tool_use action
+const SCORE_NEUTRAL = 0.3; // no signal either way
+const SCORE_MISPLACED_WRITE = 0.2; // a write syscall during a non-write action
+const SCORE_MISPLACED_NET = 0.1; // a network syscall during a non-network action
+
+/** Exec/exit are strong evidence for tool_use, mild lifecycle noise otherwise. */
+const scoreProcessLifecycle = (
+  eventType: string,
+  actionType: string
+): { score: number; reason: string } | null => {
+  if (!PROCESS_LIFECYCLE.has(eventType)) return null;
+  if (actionType === "tool_use") return { score: SCORE_TOOL_USE, reason: `${eventType} matches tool_use action` };
+  return { score: SCORE_LIFECYCLE, reason: `${eventType} is general process lifecycle` };
+};
+
+/** A network syscall fired during an action that doesn't talk to the network. */
+const isMisplacedNetworkFn = (fn: string, actionType: string): boolean =>
+  NETWORK_FUNCTIONS.has(fn) && actionType !== "network_request" && actionType !== "llm_call";
+
+/** A write syscall fired during a non-write action. */
+const isMisplacedWrite = (fn: string, actionType: string): boolean =>
+  fn === "sys_write" && actionType !== "file_write";
+
+/** Function-relevance signal: does the event's syscall fit the reported action? */
+export const functionRelevance = (config: CorrelationConfig): SignalMatcher => (event, _action, hints) => {
+  const weight = config.weights.function_relevance;
   const fn = event.function_name ?? "";
   const eventType = event.event_type;
-
-  // process_exec/exit events are relevant for tool_use actions
-  if (eventType === "process_exec" || eventType === "process_exit") {
-    if (hints.action_type === "tool_use") {
-      return {
-        signal_name: "function_relevance",
-        score: 1.0,
-        weight: WEIGHT,
-        reason: `${eventType} matches tool_use action`,
-      };
-    }
-    // Exec/exit are mildly relevant for any action (process lifecycle)
-    return {
-      signal_name: "function_relevance",
-      score: 0.3,
-      weight: WEIGHT,
-      reason: `${eventType} is general process lifecycle`,
-    };
-  }
-
-  // Direct match: the kprobe function is in the expected list
-  if (hints.expected_functions.includes(fn)) {
-    return {
-      signal_name: "function_relevance",
-      score: 1.0,
-      weight: WEIGHT,
-      reason: `${fn} expected for ${hints.action_type}`,
-    };
-  }
-
-  // fd_install is somewhat generic — relevant for most actions
-  if (fn === "fd_install") {
-    return {
-      signal_name: "function_relevance",
-      score: 0.4,
-      weight: WEIGHT,
-      reason: "fd_install is generic (file descriptor allocation)",
-    };
-  }
-
-  // Network function but not a network action
-  if ((fn === "tcp_connect" || fn === "tcp_sendmsg") && hints.action_type !== "network_request" && hints.action_type !== "llm_call") {
-    return {
-      signal_name: "function_relevance",
-      score: 0.1,
-      weight: WEIGHT,
-      reason: `${fn} unlikely for ${hints.action_type}`,
-    };
-  }
-
-  // sys_write for non-write actions
-  if (fn === "sys_write" && hints.action_type !== "file_write") {
-    return {
-      signal_name: "function_relevance",
-      score: 0.2,
-      weight: WEIGHT,
-      reason: `sys_write with non-write action ${hints.action_type}`,
-    };
-  }
-
-  return {
+  const actionType = hints.action_type;
+  const result = (score: number, reason: string): SignalResult => ({
     signal_name: "function_relevance",
-    score: 0.3,
-    weight: WEIGHT,
-    reason: `${fn || eventType} has neutral relevance to ${hints.action_type}`,
-  };
+    score,
+    weight,
+    reason,
+  });
+
+  const lifecycle = scoreProcessLifecycle(eventType, actionType);
+  if (lifecycle) return result(lifecycle.score, lifecycle.reason);
+
+  if (hints.expected_functions.includes(fn)) return result(SCORE_EXPECTED, `${fn} expected for ${actionType}`);
+
+  if (fn === "fd_install") return result(SCORE_FD_INSTALL, "fd_install is generic (file descriptor allocation)");
+
+  if (isMisplacedNetworkFn(fn, actionType)) return result(SCORE_MISPLACED_NET, `${fn} unlikely for ${actionType}`);
+
+  if (isMisplacedWrite(fn, actionType)) {
+    return result(SCORE_MISPLACED_WRITE, `sys_write with non-write action ${actionType}`);
+  }
+
+  return result(SCORE_NEUTRAL, `${fn || eventType} has neutral relevance to ${actionType}`);
 };

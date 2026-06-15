@@ -1,13 +1,24 @@
 import type { SignalMatcher, EventCandidate, ActionWindow, ActionHints, ScoredCorrelation } from "./types.js";
+import { DEFAULT_CORRELATION_CONFIG, type CorrelationConfig } from "./config.js";
 import { timeProximity } from "./signals/time-proximity.js";
 import { processIdentity } from "./signals/process-identity.js";
 import { networkDestination } from "./signals/network-destination.js";
 import { filePath } from "./signals/file-path.js";
 import { functionRelevance } from "./signals/function-relevance.js";
 
-const DEFAULT_THRESHOLD = 0.15;
+const REASON_SCORE_MIN = 0.3; // only signals scoring above this contribute a reason
+const SCORE_ROUNDING = 100; // signal_scores rounded to 2dp
+const CONFIDENCE_ROUNDING = 1000; // confidence rounded to 3dp
 
-export const createSignalRegistry = (threshold = DEFAULT_THRESHOLD) => {
+/**
+ * Build the multi-signal scoring registry bound to a config. `scoreEvent`
+ * aggregates participating signals as Σ(score·weight)/Σ(weight) and discards
+ * results below the config's threshold.
+ * @function createSignalRegistry
+ * @param config - Engine weights/thresholds; defaults to the shipped constants.
+ */
+export const createSignalRegistry = (config: CorrelationConfig = DEFAULT_CORRELATION_CONFIG) => {
+  const threshold = config.discardThreshold;
   const signals: SignalMatcher[] = [];
 
   const register = (matcher: SignalMatcher) => {
@@ -44,27 +55,27 @@ export const createSignalRegistry = (threshold = DEFAULT_THRESHOLD) => {
     const signalScores: Record<string, number> = {};
     const reasons: string[] = [];
     for (const r of participating) {
-      signalScores[r.signal_name] = Math.round(r.score * 100) / 100;
-      if (r.score > 0.3) {
+      signalScores[r.signal_name] = Math.round(r.score * SCORE_ROUNDING) / SCORE_ROUNDING;
+      if (r.score > REASON_SCORE_MIN) {
         reasons.push(r.reason);
       }
     }
 
     return {
       event_id: event.id,
-      confidence: Math.round(confidence * 1000) / 1000,
+      confidence: Math.round(confidence * CONFIDENCE_ROUNDING) / CONFIDENCE_ROUNDING,
       method: bestSignal.signal_name,
       signal_scores: signalScores,
       reasons,
     };
   };
 
-  // Register all default signals
-  register(timeProximity);
-  register(processIdentity);
-  register(networkDestination);
-  register(filePath);
-  register(functionRelevance);
+  // Register all default signals, each bound to the active config
+  register(timeProximity(config));
+  register(processIdentity(config));
+  register(networkDestination(config));
+  register(filePath(config));
+  register(functionRelevance(config));
 
   return { register, scoreEvent };
 };

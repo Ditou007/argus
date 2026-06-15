@@ -2,10 +2,10 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–4 done (eval package, real
-corpus, per-type metrics, calibration). Calibration confirms the real lever is the confidence
-threshold (Slices 8–9), deflating the arm64 + container-PID engine fixes (Slices 10–11) — see
-**Real-run findings**.
+**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–5 done (eval package, real
+corpus, per-type metrics, calibration, magic-numbers→config). Calibration confirms the real lever is
+the confidence threshold (Slices 8–9), deflating the arm64 + container-PID engine fixes (Slices
+10–11) — see **Real-run findings**.
 
 ---
 
@@ -121,10 +121,12 @@ Each line is written to become a failing test in Build.
   observed accuracy per bin over the corpus, matching hand-computed per-bin accuracy on a known
   fixture. *(test: calibration on known fixture equals hand-computed bins)* ✅ `calibration.test.ts`
   pins hand-computed decile accuracy; `corpus-cli` prints the curve over the real corpus.
-- [ ] **D7 — Constants live in config, behavior unchanged.** All five signal weights and every
+- [x] **D7 — Constants live in config, behavior unchanged.** All five signal weights and every
   threshold/constant are read from config; with the shipped config the scoring output is
   **byte-identical** to the pre-extraction engine on the corpus. *(test: characterization snapshot
-  pre/post extraction is identical; changing a config weight changes the score)*
+  pre/post extraction is identical; changing a config weight changes the score)* ✅
+  `characterization.test.ts` — golden-master fingerprint byte-identical across the extraction; weight
+  change shifts scores. Constants in `correlation/config.ts`.
 - [ ] **D8 — Unexplained behavior is detected.** Given a labelled session, detection flags exactly
   the events with no correlation ≥ threshold to any action and matches the `true_unexplained` set:
   an unreported `/etc/passwd` read is flagged; every reported event is not. *(test: fixture with 1
@@ -204,7 +206,18 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/calibration.test.ts`.
   - *DoD:* tests green · `keel eval` green.
   - *Traces:* D6. *Depends on:* Slice 3.
-- [ ] **Slice 5 — Magic numbers → config (characterization-guarded). Refactor-only.**
+- [x] **Slice 5 — Magic numbers → config (characterization-guarded). Refactor-only.** ✅ New
+  `packages/api/src/correlation/config.ts` (`CorrelationConfig` + `DEFAULT_CORRELATION_CONFIG`) holds
+  the 5 weights, discard `0.15`, bands `0.7`/`0.3`, clock-skew `500ms`, min-window pad `200ms`, and the
+  Gaussian coeff. Signals became config-bound factories (`processIdentity(config)` …); the registry,
+  correlator, and `scoreCorpus` accept a config. Guarded by `eval/characterization.test.ts`: a
+  golden-master fingerprint of all 148 (action,event) confidences over the real corpus is
+  **byte-identical** pre/post extraction, and a second test proves changing a weight changes scores.
+  The factory refactor un-grandfathered three over-complex signals (file-path, function-relevance,
+  network-destination) — fixed by behavior-preserving predicate extractions under the golden master.
+  39 tests green. *(Scope note: per-signal score tiers — e.g. child-PID 0.7, same-pod 0.4 — stay as
+  named constants in their signal; this slice extracts the engine-wide weights/thresholds the plan
+  enumerates, not every score literal.)*
   - *Delivers:* all five signal weights + thresholds/constants (`0.15` discard, `0.7`/`0.3` bands,
     `500ms` skew, `200ms` pad, Gaussian coeff) read from config; signals read config, never hardcode.
   - *Acceptance:* with shipped config, scoring output is byte-identical to pre-extraction on the
