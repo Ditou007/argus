@@ -4,6 +4,7 @@ import pg from "pg";
 import { createEventsRouter } from "./routes/events.js";
 import { createHealthRouter } from "./routes/health.js";
 import { createSessionsRouter } from "./routes/sessions.js";
+import { createUnexplainedRouter } from "./routes/unexplained.js";
 import { createLiveStream } from "./ws/live-stream.js";
 import { config } from "./config.js";
 
@@ -23,6 +24,7 @@ const liveStream = createLiveStream(server, pool, { redis: config.redis });
 app.use("/api/health", createHealthRouter(pool));
 app.use("/api/events", createEventsRouter(pool));
 app.use("/api/sessions", createSessionsRouter(pool, liveStream));
+app.use("/api/sessions", createUnexplainedRouter(pool));
 
 const shutdown = async () => {
   console.log("Shutting down API...");

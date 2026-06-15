@@ -2,10 +2,10 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–5 done (eval package, real
-corpus, per-type metrics, calibration, magic-numbers→config). Calibration confirms the real lever is
-the confidence threshold (Slices 8–9), deflating the arm64 + container-PID engine fixes (Slices
-10–11) — see **Real-run findings**.
+**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–6 done (eval package, real
+corpus, per-type metrics, calibration, magic-numbers→config, unexplained-behavior detection).
+Calibration confirms the real lever is the confidence threshold (Slices 8–9), deflating the arm64 +
+container-PID engine fixes (Slices 10–11) — see **Real-run findings**.
 
 ---
 
@@ -130,7 +130,9 @@ Each line is written to become a failing test in Build.
 - [ ] **D8 — Unexplained behavior is detected.** Given a labelled session, detection flags exactly
   the events with no correlation ≥ threshold to any action and matches the `true_unexplained` set:
   an unreported `/etc/passwd` read is flagged; every reported event is not. *(test: fixture with 1
-  unreported read → flagged; all reported events → not flagged)*
+  unreported read → flagged; all reported events → not flagged)* 🟡 Capability delivered in Slice 6
+  (`detectUnexplained` + `eval/unexplained.test.ts` + API unit tests); matching the labelled
+  `true_unexplained` set as a measured metric lands in Slice 7.
 - [ ] **D9 — Sweep recommends and a baseline is recorded.** A threshold sweep emits precision/recall
   at each threshold, writes a recommended threshold, and writes a committed baseline metrics file.
   *(test: sweep output is structured and covers the threshold range; baseline file is written)*
@@ -225,7 +227,15 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/characterization.test.ts` (snapshot pre/post identical).
   - *DoD:* tests green · `keel eval` green · no behavior change · spec touched.
   - *Traces:* D7. *Depends on:* Slice 3.
-- [ ] **Slice 6 — Unexplained-behavior detection (new capability, additive).**
+- [x] **Slice 6 — Unexplained-behavior detection (new capability, additive).** ✅ Pure
+  `detectUnexplained(eventIds, correlations, threshold)` in `correlation/unexplained.ts` flags every
+  event whose strongest correlation to *any* action is below threshold. Additive HTTP surface
+  `GET /api/sessions/:id/unexplained` (production DB/streaming path otherwise untouched). First tests
+  in `@argus/api` (vitest added): 5 unit tests for the detector; `eval/unexplained.test.ts` exercises
+  the capability over the real corpus (strongly-attributed events never flagged; flagged events all
+  below the high band). 51 tests green. *(Route semantics: population = the pod's events in the
+  session window padded ±1s to match the engine's candidate window; `threshold` defaults to the high
+  band and is validated to `[0,1]`; an event is "explained" at confidence ≥ threshold.)*
   - *Delivers:* logic + additive API surface that flags every session event with no correlation ≥
     threshold to any action as `unexplained`; production DB/streaming path otherwise untouched.
   - *Acceptance:* an unreported `/etc/passwd` read is flagged; every reported event is not.
