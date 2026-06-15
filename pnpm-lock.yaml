@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@wednesday-sol/keel':
-        specifier: ^0.14.0
-        version: 0.14.0
+        specifier: ^0.15.0
+        version: 0.15.0
       eslint:
         specifier: ^9
         version: 9.39.4
@@ -933,8 +933,8 @@ packages:
   '@vitest/utils@2.1.9':
     resolution: {integrity: sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ==}
 
-  '@wednesday-sol/keel@0.14.0':
-    resolution: {integrity: sha512-wghdTsDoU+rrsFLU+lt1qFYdZ+Ui1La03mE27gm1OaSmFIqreJFuJYZRF0yfXsn5A6fFEWzKYBE6wQq5NqBKng==}
+  '@wednesday-sol/keel@0.15.0':
+    resolution: {integrity: sha512-iYfckdc0l/tVofckbqoXwejYGFZAwW4O37dFB9SLlYWlu13+DfzSTRuu6+UKYdxmeMWgsidc8VOqn86AYAeX/A==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -2911,7 +2911,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 1.2.0
 
-  '@wednesday-sol/keel@0.14.0':
+  '@wednesday-sol/keel@0.15.0':
     dependencies:
       jscpd: 4.2.5
 
@@ -3546,7 +3546,7 @@ snapshots:
       call-bound: 1.0.4
       gopd: 1.2.0
       has-tostringtag: 1.0.2
-      hasown: 2.0.2
+      hasown: 2.0.4
 
   is-stream@2.0.1: {}
 
