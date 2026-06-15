@@ -1,6 +1,7 @@
 import type { Metrics } from "./metrics.js";
 import type { TypeMetrics } from "./corpus-metrics.js";
 import type { CalibrationBin } from "./calibration.js";
+import type { UnexplainedMetrics } from "./unexplained-metrics.js";
 
 const PERCENT = 100;
 const PRECISION_DP = 1;
@@ -43,3 +44,11 @@ export const formatCalibrationReport = (bins: readonly CalibrationBin[]): string
   });
   return ["calibration (emitted correlations, uncertain excluded)", header, ...rows].join("\n");
 };
+
+/** Render unexplained-behaviour detection metrics deterministically. */
+export const formatUnexplainedReport = (m: UnexplainedMetrics): string =>
+  [
+    `unexplained-behaviour detection @ threshold ${m.threshold}`,
+    `precision: ${pct(m.precision)} (tp=${m.tp} fp=${m.fp})`,
+    `recall:    ${pct(m.recall)} (fn=${m.fn})`,
+  ].join("\n");

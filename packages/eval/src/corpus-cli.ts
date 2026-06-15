@@ -4,7 +4,8 @@ import { parseCorpus } from "./corpus.js";
 import { scoreCorpus } from "./score-corpus.js";
 import { perActionTypeMetrics } from "./corpus-metrics.js";
 import { calibrationBins } from "./calibration.js";
-import { formatCorpusReport, formatCalibrationReport } from "./report.js";
+import { unexplainedMetrics } from "./unexplained-metrics.js";
+import { formatCorpusReport, formatCalibrationReport, formatUnexplainedReport } from "./report.js";
 
 const DEFAULT_THRESHOLD = 0.7; // the engine's high-confidence band — see SPEC_01 real-run findings
 const EXIT_USAGE = 1;
@@ -30,6 +31,7 @@ export const runCorpusCli = (argv: readonly string[], deps: CorpusCliDeps): numb
   const metrics = perActionTypeMetrics(scores, threshold);
   deps.write(`${formatCorpusReport(threshold, metrics)}\n`);
   deps.write(`\n${formatCalibrationReport(calibrationBins(scores))}\n`);
+  deps.write(`\n${formatUnexplainedReport(unexplainedMetrics(corpus.events, scores, threshold))}\n`);
   return 0;
 };
 
