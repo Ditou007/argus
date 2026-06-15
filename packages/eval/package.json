@@ -7,6 +7,8 @@
   "scripts": {
     "eval": "tsx src/cli.ts",
     "curate": "tsx src/curate.ts",
+    "eval:rebaseline": "tsx src/sweep-cli.ts fixtures/corpus-real.json fixtures/baseline.json",
+    "eval:gate": "tsx src/gate-cli.ts fixtures/corpus-real.json fixtures/baseline.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
