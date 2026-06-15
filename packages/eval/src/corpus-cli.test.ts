@@ -31,6 +31,8 @@ describe("runCorpusCli", () => {
     expect(out()).toContain("corpus metrics @ threshold 0.7");
     expect(out()).toContain("llm_call");
     expect(out()).toContain("file_write");
+    expect(out()).toContain("calibration (emitted correlations, uncertain excluded)");
+    expect(out()).toContain("0.9-1.0");
   });
 
   it("exits 1 with usage when no path is given", () => {

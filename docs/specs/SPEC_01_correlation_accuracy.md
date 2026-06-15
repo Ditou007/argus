@@ -2,9 +2,10 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Build in progress — 11 slices in `## Plan`. Slice 1 done; Slice 2 real capture
-obtained (labelling pending). Scope expanded with arm64 + container-PID engine fixes (Slices 10–11)
-after running on real Kubernetes — see **Real-run findings**.
+**Status:** 🟢 Build in progress — 12 slices in `## Plan`. Slices 1–4 done (eval package, real
+corpus, per-type metrics, calibration). Calibration confirms the real lever is the confidence
+threshold (Slices 8–9), deflating the arm64 + container-PID engine fixes (Slices 10–11) — see
+**Real-run findings**.
 
 ---
 
@@ -116,9 +117,10 @@ Each line is written to become a failing test in Build.
   `llm_call` event (confidence ≈ 0.48) is **counted against precision** at the medium band, i.e.
   the harness reports the over-scoring rather than masking it. *(test: decoy fixture, assert it
   lowers precision at threshold 0.3)*
-- [ ] **D6 — Calibration is reported.** The report bins correlations by confidence and reports
+- [x] **D6 — Calibration is reported.** The report bins correlations by confidence and reports
   observed accuracy per bin over the corpus, matching hand-computed per-bin accuracy on a known
-  fixture. *(test: calibration on known fixture equals hand-computed bins)*
+  fixture. *(test: calibration on known fixture equals hand-computed bins)* ✅ `calibration.test.ts`
+  pins hand-computed decile accuracy; `corpus-cli` prints the curve over the real corpus.
 - [ ] **D7 — Constants live in config, behavior unchanged.** All five signal weights and every
   threshold/constant are read from config; with the shipped config the scoring output is
   **byte-identical** to the pre-extraction engine on the corpus. *(test: characterization snapshot
@@ -190,7 +192,12 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/metrics.test.ts`.
   - *DoD:* tests green · `keel eval` green.
   - *Traces:* D4(full), D9(partial). *Depends on:* Slice 1.
-- [ ] **Slice 4 — Calibration.**
+- [x] **Slice 4 — Calibration.** ✅ `calibrationBins` (decile bins over *emitted* correlations,
+  uncertain excluded, FP-robust binning rounded to the engine's 3dp grid) + `formatCalibrationReport`,
+  wired into `corpus-cli`. Real-corpus curve: the 72 emitted correlations below 0.4 are **0% accurate**
+  (the over-correlation noise tail), 0.4–0.6 are weakly accurate (8–25%), and **every correlation ≥0.7
+  is 100% accurate** — empirically confirming Slice 3's finding that the confidence threshold is the
+  real lever (Slices 8, 9). 37 tests green.
   - *Delivers:* correlations binned by confidence band with observed accuracy per bin, plus bin
     counts, in the report.
   - *Acceptance:* per-bin accuracy matches hand-computed bins on a known fixture; bin counts shown.
