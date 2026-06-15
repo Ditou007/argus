@@ -18,7 +18,7 @@ First read `.claude/skills/plan-and-breakdown/SKILL.md` (so you understand the s
    - **auto** — drive **every** remaining slice, continuing to the next one **only after the current slice's PR is green**.
    Confirm the chosen mode out loud before starting.
 3. **Select the next slice — one slice, one PR.** Take the **first unchecked (`- [ ]`) slice whose `Depends on` are all checked**. Never start a slice whose dependencies aren't satisfied — the plan is dependency-ordered for a reason. Each slice ships as its **own** PR; never bundle slices into one PR. If every slice is checked, you're done (announce it).
-4. **Drive that one slice through the lifecycle**, in order, each phase against its own skill/command:
+4. **Drive that one slice through the lifecycle**, in order, each phase against its own skill/command — **run every phase; never skip Verify or Review because a slice "looks trivial" — that's how regressions ship**:
    - **Build** (`/keel:build`) — implement the slice test-first to the code-craft bar; tick it off in `## Plan` (Build does this by construction).
    - **Verify** (`/keel:verify`) — tests + coverage, then exercise the running artifact; root-cause and fix any failure as a gated slice.
    - **Review** (`/keel:review`) — `ship-check` / security / performance on the diff; address findings.

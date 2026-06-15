@@ -4,6 +4,11 @@
   "private": true,
   "description": "Argus REST API service",
   "type": "module",
+  "exports": {
+    "./correlation/signal-registry": "./src/correlation/signal-registry.js",
+    "./correlation/action-parser": "./src/correlation/action-parser.js",
+    "./correlation/types": "./src/correlation/types.js"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",

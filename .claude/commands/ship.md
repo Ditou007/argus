@@ -18,6 +18,7 @@ First read `.claude/skills/commits/SKILL.md` and `.claude/skills/changesets/SKIL
 
 ## Do
 
+0. **Confirm Verify and Review actually ran — Ship presupposes them, it doesn't replace them.** If this change came straight from Build without a `/keel:verify` (tests + a live exercise of the running artifact, e2e left behind) and a `/keel:review` (the adversarial pass), **stop and run them now**, before anything else. Ship is for landing a *verified, reviewed* change; the gate (`keel eval`) is the floor, not a substitute for either phase. Don't skip them because the change "looks small."
 1. **Auto-fix the mechanical issues first.** Run `keel fix` — it applies `eslint --fix` over just your diff, clearing the formatting/quotes/import-order/unused-import problems so you never hand-fix what a tool can. It's an action, not a gate: it never touches untouched legacy, never rewrites logic, and always exits clean. Whatever it can't fix is left for the next step.
 2. **Pre-flight the gate:** `keel eval` (its current result is above). Anything still red *after* the auto-fix is a real issue that needs judgment — root-cause and fix it. **Never weaken a threshold, grandfather a violation, or disable a check to go green.** Never push red.
 3. **Changeset.** If the change touches a published package (`changesets.publishedGlobs`), add a `.changeset/*.md` describing it — the drift ledger. The gate's changeset check enforces this.

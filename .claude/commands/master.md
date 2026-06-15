@@ -37,6 +37,8 @@ Drive every non-trivial change through the phases — each has a command, and ea
 
 **Drive to green — don't ask to watch.** After a push, watching CI to green and running the address-review loop until every reviewer comment (bot + human) is resolved is your job, not a question handed back to the user — root-cause failures, never blind-retry. After the user authorizes a merge, watch the release/CD to green and confirm the published version too. Return to the human only for a genuine blocker or a decision that's theirs (authorizing the merge) — **never to ask "should I watch it turn green?"**
 
+**No skipping Verify and Review.** Every change runs `/keel:verify` (tests/gate + a live exercise, e2e left behind) **and** `/keel:review` (the adversarial pass) **before** Ship — automatically, on your own, even for a one-liner. Build → Ship directly is a violation. `keel eval` is the floor beneath them, not a replacement: a green gate does not mean the change was verified live or reviewed for the things a gate can't see (is it the right behavior? does the prose still match? can an invariant be subverted?).
+
 ## Now
 
 State which phase the current work is in, read the relevant skill(s), and proceed. If you're unsure where to start, ask one question to locate the work in the lifecycle, then chain into the right phase command.
