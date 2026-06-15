@@ -2,15 +2,16 @@
 
 **Subsystem:** `packages/api/src/correlation/**` (the multi-signal scoring engine) + a new `packages/eval` evaluation harness.
 **Last updated:** 2026-06-14
-**Status:** 🟢 Build — core plan complete + cross-arch fix. Slices 1–10 done (eval package, real
-corpus, per-type metrics, calibration, magic-numbers→config, unexplained detection + metrics,
-threshold sweep + committed baseline, regression gate in CI, arch-aware syscall matching). Both
+**Status:** 🟢 Build — **all 11 slices done.** Eval package, real corpus, per-type metrics,
+calibration, magic-numbers→config, unexplained detection + metrics, threshold sweep + committed
+baseline, regression gate in CI, arch-aware syscall matching, container-PID identity guard. Both
 capabilities measured, justified by a data-driven threshold (**0.7**, committed
 `fixtures/baseline.json`: attribution F1 0.90 / 100% precision, unexplained 93.3% precision / 100%
-recall) and protected by `eval-gate` CI. Slice 10 shipped arch normalization (cross-arch correctness)
-but the harness showed it recovers no recall here — the real write-attribution blocker is the kprobe
-not capturing fd/path (**D14**, tracked → SPEC_02 candidate). Remaining: Slice 11 (container-PID),
-then **D14** is the genuinely high-value follow-up. See **Real-run findings**.
+recall) and protected by `eval-gate` CI. **Key meta-finding:** the eval harness disproved the premises
+of *both* engine fixes (10 & 11) — they shipped as cross-env correctness (arm64/x64; container-init
+PID) but recover no recall, because the real blockers are missing telemetry: writes lack fd/path
+(**D14**) and events lack the agent's host/namespaced PID (**D15**). Both are tracked **SPEC_02
+candidates** — the genuinely high-value follow-ups. SPEC_01's scoring-core scope is complete.
 
 ---
 
@@ -163,10 +164,22 @@ Each line is written to become a failing test in Build.
   capture where `__…sys_write` events become true file_write matches. Out of scope for this spec's
   scoring core (like D13); a strong **SPEC_02** candidate. *(acceptance: a re-captured corpus where
   write events carry a path; write recall > 0 for a file_write action.)*
-- [ ] **D12 — container-PID case handled (fix).** With `agent_pid` = a container PID (`1`) and
-  host-PID events, identity no longer silently dead-ends at same-pod=0.4 for the agent's own
-  syscalls; attribution recall on the real fixture improves measurably after the fix. *(test: real
-  fixture, assert identity contribution / recall before vs after)*
+- [x] **D12 — container-PID case handled (reframed by the data).** When `agent_pid === 1` (container
+  namespace), `process_identity` no longer does invalid host-PID exact/child matching — preventing the
+  false "child of agent" (0.7) match for host processes reparented to init (`process-identity.ts`,
+  `CONTAINER_INIT_PID`). *(test: `eval/container-pid.test.ts` — reparented host event scores same-pod
+  not 0.7; exact/child preserved for a real host PID.)* **⚠ The original acceptance — "recall improves
+  on the real fixture" — does NOT hold and was retired:** the capture carries no namespaced PID
+  (`ns: none`), so the agent's own host-PID syscalls can't be identified; identity stays at same-pod.
+  This is **cross-env correctness** (prevents false identity in any k8s deploy), byte-neutral on the
+  corpus. The real fix is **D15**.
+- [ ] **D15 — capture the agent's host/namespaced PID (real fix, tracked).** The SDK reports the
+  container PID (1); without the agent's host PID (or a namespaced PID on each event), exact-PID
+  identity is impossible in k8s and identity is capped at same-pod=0.4. The fix is an SDK/ingestion
+  change (report the agent's host PID, or have Tetragon emit the namespaced PID), validated by a fresh
+  capture where the agent's own syscalls exact-match. Out of scope for the scoring core (like D13/D14);
+  a **SPEC_02** candidate. *(acceptance: a re-captured corpus carrying the agent host PID; the agent's
+  own events reach exact-PID identity.)*
 - [ ] **D13 — ingestion-timing gap is measured, not hidden.** The harness reports the recall lost
   when an action ends before its events are ingested (the first actions in the real run correlated
   0). Reported as a named metric, with the cause documented — fixing it is out of scope (ingestion
@@ -314,15 +327,22 @@ ships. Each slice is one reviewable PR under the PR-size budget (`prSize.fail = 
   - *Test:* `eval/arch-syscall.test.ts` + `api/correlation/syscall.test.ts`.
   - *DoD:* tests green · `keel eval` green · spec touched (correlation code changed).
   - *Traces:* D11 (reframed) + D14 (tracked). *Depends on:* Slice 2 (real fixture), Slice 3 (metrics).
-- [ ] **Slice 11 — Fix: container-PID reality.**
-  - *Delivers:* `process_identity` no longer treats exact-PID as dominant when the agent PID is a
-    container PID; identity is derived from pod + the namespaced PID where available, so the agent's
-    own host-PID syscalls aren't capped at same-pod=0.4.
-  - *Acceptance:* on the real fixture (agent_pid=1, host-PID events) attribution recall improves
-    measurably after the fix; the synthetic exact-PID fixture still scores 1.0.
-  - *Test:* `eval/container-pid.test.ts` (before/after on the real fixture; exact-PID unchanged).
+- [x] **Slice 11 — Fix: container-PID reality.** ✅ When `agent_pid === 1` (container-init namespace
+  PID), `process_identity` skips the exact-PID and child-PID host comparisons and falls to the
+  pod-level signal — guarded by `CONTAINER_INIT_PID`. **Same shape as Slice 10:** the harness showed
+  the namespaced PID isn't in the capture (`ns: none`), so the agent's own host-PID syscalls can't be
+  identified → no recall recovery; and this corpus has 0 reparented events, so it's byte-neutral here
+  (golden master unchanged). But it fixes a real latent cross-env bug: in any k8s deploy, host
+  processes reparented to init have parent PID 1 and would spuriously match as "child of agent" (0.7
+  false positive). The real fix (capture the agent's host/namespaced PID) is tracked as **D15**.
+  - *Delivers:* `process_identity` no longer does host-PID exact/child matching when the agent PID is
+    the container-init PID (1); identity falls to the pod signal, preventing false child matches.
+  - *Acceptance (reframed):* with `agent_pid=1`, a host event reparented to init scores same-pod
+    (0.4), not the 0.7 false child match; exact/child matching is preserved when `agent_pid` is a real
+    host PID; the corpus is byte-neutral (golden master unchanged).
+  - *Test:* `eval/container-pid.test.ts`.
   - *DoD:* tests green · `keel eval` green · spec touched.
-  - *Traces:* D12. *Depends on:* Slice 2, Slice 3.
+  - *Traces:* D12 (reframed) + D15 (tracked). *Depends on:* Slice 2, Slice 3.
 
 **Risks carried:** (1) Slice 2 needs live Tetragon/k8s — infra confirmed available. (2) Labelling is
 subjective; mitigated by documented rules + an `uncertain` label excluded from P/R. (3) D7
@@ -364,7 +384,8 @@ plan:
    alone recovers no recall — making writes attributable needs the write fd/path captured at the
    tracing layer (→ **D14**, a SPEC_02 candidate). Vindicates seeding fixtures from real captures
    over idealized synthetic names — twice over.
-2. **Container PID.** The SDK reports `agent_pid=1` (container namespace); Tetragon reports host
+2. **Container PID.** (→ Slice 11 fixed the false-match risk; → **D15** tracks the real telemetry fix.)
+   The SDK reports `agent_pid=1` (container namespace); Tetragon reports host
    PIDs → `process_identity` exact-match is dead in k8s, always same-pod=0.4. → Slice 11 (fix).
 3. **Over-correlation.** One `httpbin` GET drew 98 correlated events (62 low-confidence) — the false-
    positive tail the precision metric (D5) is built to quantify.

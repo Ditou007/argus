@@ -1,6 +1,8 @@
 import type { SignalMatcher } from "../types.js";
 import type { CorrelationConfig } from "../config.js";
 
+const CONTAINER_INIT_PID = 1; // PID 1 in a container namespace — never a usable host PID
+
 // Extract nested fields from raw_event safely
 const getProcessPid = (raw: Record<string, unknown>, eventType: string): number | null => {
   const container =
@@ -46,8 +48,15 @@ export const processIdentity = (config: CorrelationConfig): SignalMatcher => (ev
   const eventPid = event.process_pid ?? getProcessPid(event.raw_event, event.event_type);
   const parentPid = getParentPid(event.raw_event);
 
+  // The SDK reports the container-namespace PID; when the agent is PID 1 in its
+  // container, comparing it against Tetragon's host PIDs is meaningless — and the
+  // child check is actively wrong (host processes reparented to init have parent
+  // PID 1). Skip host-PID matching in that case and fall to the pod-level signal.
+  // The real fix (capture the agent's host/namespaced PID) is tracked as D15.
+  const agentPidIsHostMeaningful = hints.agent_pid !== CONTAINER_INIT_PID;
+
   // Exact PID match
-  if (eventPid !== null && eventPid === hints.agent_pid) {
+  if (agentPidIsHostMeaningful && eventPid !== null && eventPid === hints.agent_pid) {
     return {
       signal_name: "process_identity",
       score: 1.0,
@@ -57,7 +66,7 @@ export const processIdentity = (config: CorrelationConfig): SignalMatcher => (ev
   }
 
   // Child process (parent PID matches agent)
-  if (parentPid !== null && parentPid === hints.agent_pid) {
+  if (agentPidIsHostMeaningful && parentPid !== null && parentPid === hints.agent_pid) {
     return {
       signal_name: "process_identity",
       score: 0.7,
