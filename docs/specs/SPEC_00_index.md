@@ -4,13 +4,14 @@ Specs are the source of truth for Argus subsystems. Each spec is `Goal · Tasks 
 written before the code and kept true as the code changes. The `## Plan` section is added
 by the Plan phase (`/keel:plan`) and ticked off slice by slice during Build.
 
-**Last updated:** 2026-06-14
+**Last updated:** 2026-06-15
 
 ## Index
 
 | Spec | Subsystem | Status |
 |---|---|---|
-| [SPEC_01](./SPEC_01_correlation_accuracy.md) | Correlation engine — accuracy harness & unexplained-behavior detection | 🟢 Planned (Build in progress) |
+| [SPEC_01](./SPEC_01_correlation_accuracy.md) | Correlation engine — accuracy harness & unexplained-behavior detection | 🟢 Build complete (all 11 slices + HTTP-contract tests merged) |
+| [SPEC_02](./SPEC_02_trustworthy_unexplained.md) | Trustworthy unexplained-behaviour — pod-scoped capture, risk-ranked triage, D14/D15 telemetry, OTel-GenAI SDK | 🟢 Define complete (ready for Plan) |
 
 ## Conventions
 
