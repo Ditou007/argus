@@ -2,6 +2,7 @@ import type { SignalMatcher } from "../types.js";
 import type { CorrelationConfig } from "../config.js";
 import { isNoisePath } from "../action-parser.js";
 import { normalizeSyscall } from "../syscall.js";
+import { extractFilePath } from "../resource.js";
 
 const FILE_FUNCTIONS = new Set(["fd_install", "sys_write", "sys_read"]);
 
@@ -12,24 +13,6 @@ const isFileAction = (actionType: string): boolean =>
 /** Either path is a prefix of the other (expected /data/ vs event /data/report.pdf). */
 const isPrefixMatch = (eventPath: string, expectedPaths: readonly string[]): boolean =>
   expectedPaths.some((expected) => eventPath.startsWith(expected) || expected.startsWith(eventPath));
-
-// Extract file path from raw kprobe event args
-const extractFilePath = (raw: Record<string, unknown>): string | null => {
-  const kprobe =
-    (raw.process_kprobe as Record<string, unknown>) ??
-    (raw.processKprobe as Record<string, unknown>);
-  if (!kprobe) return null;
-
-  const args = kprobe.args as Array<Record<string, unknown>> | undefined;
-  if (!args) return null;
-
-  for (const arg of args) {
-    const fileArg = (arg.fileArg ?? arg.file_arg) as Record<string, unknown> | undefined;
-    if (fileArg && fileArg.path) return String(fileArg.path);
-  }
-
-  return null;
-};
 
 /** Score an extracted event path against the action's expected paths. */
 const scoreExtractedPath = (

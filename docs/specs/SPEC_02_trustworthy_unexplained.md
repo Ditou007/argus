@@ -232,11 +232,12 @@ our kernel build.
   exec are now ingested (3, was 0) and curl's `tcp_connect` to `104.20.23.154:80` is captured (curl
   kprobes were 0 before). Frozen as `fixtures/spec02/postfix-capture-slice2.json` +
   `src/spec02-slice2.test.ts` (4 tests, green).
-- [ ] **Slice 3 — Risk function + configurable sensitivity profile** *(T2.1)* · **Delivers:** `risk =
-  sensitivity × (1 − best_confidence)` with a shipped default profile via a profile schema ·
-  **Acceptance:** HIGH unexplained event > LOW; consumer profile demoting `~/.ssh`→LOW changes its
-  score; invalid profile fails validation · **Test:** unit on risk + profile loader · **DoD:** test
-  green · `keel eval` green · within budget · **Depends on:** —
+- [x] **Slice 3 — Risk function + configurable sensitivity profile** *(T2.1)* — **done 2026-06-18.**
+  `correlation/risk.ts`: `risk = sensitivity × (1 − best_confidence)`; HIGH/MED/LOW tiers from a
+  consumer-overridable `SensitivityProfile` (shipped `DEFAULT_SENSITIVITY_PROFILE`, manual
+  `parseSensitivityProfile` validator). Resource extraction factored into `correlation/resource.ts`
+  (file_path + network_destination signals now reuse it — DRY). `__tests__/risk.test.ts` (8 tests):
+  credential read > /tmp write, graded by confidence, profile override, invalid-profile rejection.
 - [ ] **Slice 4 — Egress allowlist (declared ∪ config)** *(T2.2)* · **Delivers:** network-dest
   sensitivity from session-declared `network_request`s ∪ static config · **Acceptance:** connect to
   declared → not HIGH; config-baseline → not HIGH; neither → HIGH · **Test:** unit, three-connect
