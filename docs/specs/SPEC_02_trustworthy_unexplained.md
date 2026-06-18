@@ -3,10 +3,13 @@
 **Subsystem:** `packages/ingestion/src/event-filter.ts` (capture scope) · `packages/api/src/correlation/**`
 (identity + unexplained productisation) · `k8s/policies/**` + `policies/**` (TracingPolicies, D14) ·
 `sample-agent/argus_sdk.py` (host-PID + OTel-GenAI format) · `packages/eval/**` (re-capture validation).
-**Last updated:** 2026-06-15
-**Status:** 🟡 Build — Slices 1–6 + 2b **done.** Gap A closed; the gap is a product (coverage + risk
-triage); **D14 done** (writes carry fd→path, attributed at 0.80 on real data). Slices 7 (D15 — spike),
-8 (OTel SDK) pending.
+**Last updated:** 2026-06-18
+**Status:** 🟢 **Moat delivered — core scope shipped to `main` (PRs #9, #10).** Slices 1–6 + 2b done:
+trustworthy pod-scoped capture (Gap A closed, verified on real data) + the unexplained gap as a
+product (coverage score + risk-ranked triage + configurable profile + declared∪config egress) + D14
+write attribution (0.80 on real data). **Slice 7 (D15) spiked → deferred; Slice 8 (OTel) deferred** —
+both tracked as SPEC_03 candidates (see Plan + ledger). The goal — make the intent-vs-behavior gap
+trustworthy and actionable — is met; the remaining slices are precision/plumbing, not the moat.
 
 ---
 
@@ -273,16 +276,38 @@ our kernel build.
   a long-lived fd opened in an earlier window won't resolve there (triage, which scans the whole
   session, still does); fine for the open→write→close pattern, noted for the bare-host follow-up.
   **Depends on:** 1, 2
-- [ ] **Slice 7 — D15: host/namespaced PID as portable identity** *(T4)* · **Delivers:** agent host
-  PID captured; `process-identity` exact-matches the agent's own syscalls (1.0), no longer
-  pod-name-only · **Acceptance:** fresh re-capture; exact-PID path fires; identity unit keyed on host
-  PID · **Test:** re-captured fixture + identity unit · **DoD:** test green · `keel eval` green ·
-  **Depends on:** 1, 2 · **⚠ may need a spike first** (host-PID mechanism unproven)
-- [ ] **Slice 8 — SDK emits OTel-GenAI hybrid format** *(T5)* · **Delivers:** `gen_ai.*` spans (behind
-  `OTEL_SEMCONV_STABILITY_OPT_IN`) + `argus.*` extension; API ingests both · **Acceptance:** SDK
-  emits spec-conformant attributes per action type; API correlates legacy vs OTel identically ·
-  **Test:** SDK attribute test + API parity test · **DoD:** test green · `keel eval` green ·
-  **Depends on:** —
+- [~] **Slice 7 — D15: host/namespaced PID as portable identity** *(T4)* — **SPIKED → DEFERRED
+  (2026-06-18). Not lost — see "D15 spike findings" below.** Investigated on real data; the clean
+  fixes are unavailable and the viable workaround is runtime-coupled and precision-only, so it does
+  not advance the goal. Tracked as a **SPEC_03 candidate**.
+- [ ] **Slice 8 — SDK emits OTel-GenAI hybrid format** *(T5)* — **DEFERRED (2026-06-18).** Adoption
+  plumbing (interop), not the moat — "table-stakes, not a differentiator." Tracked as a **SPEC_03
+  candidate**; design is in "Locked decisions" (OTel-GenAI hybrid). · **Delivers:** `gen_ai.*` spans
+  (behind `OTEL_SEMCONV_STABILITY_OPT_IN`) + `argus.*` extension; API ingests both.
+
+### D15 spike findings (so the investigation is not re-derived)
+
+**Goal of D15:** the agent's *own* syscalls should exact-match identity (1.0) and be distinguishable
+from spawned-tool syscalls within the same pod. Today the SDK reports container PID 1; Tetragon
+events carry host PIDs, so the exact-PID path never fires.
+
+- **Ruled out — Tetragon namespaced PID.** Tetragon's `pod.container.pid` is **not emitted** in this
+  kind/containerd setup (0/66 `process_exec` events carry it). Not available without runtime config
+  kind/containerd doesn't support out of the box.
+- **Ruled out — SDK self-reports its host PID.** Impossible from inside the container's PID namespace
+  (`getpid()` = 1). The only route is `hostPID: true` on the agent pod — an **isolation regression on
+  the observed workload**, unacceptable for a security tool.
+- **Validated approach — observer-side pod-root resolution.** The agent is the pod's root process:
+  its `python` `process_exec` parent is the container runtime (`containerd-shim-runc-v2`, host pid
+  outside the pod), while the agent is a distinct host pid. So Argus can resolve the agent's host PID
+  once per session = the in-pod `process_exec` whose parent is the runtime, then exact-match the
+  agent's syscalls (1.0) and its children (0.7).
+- **Why deferred:** (1) **precision-only** — unexplained detection keys on *action correlation*, not
+  identity; the exfil was caught and declared actions attributed with identity at the weak pod-level
+  score, so D15 changes confidence, not capability; (2) the workaround is **runtime-coupled**
+  (containerd parent heuristic) which **fights the "works out of the box for anyone" north-star**;
+  (3) it touches the SPEC_01 scoring engine + the committed eval baseline. Net: not worth its cost
+  against the goal right now.
 
 ---
 
@@ -298,11 +323,18 @@ our kernel build.
 
 ## Defect / decision ledger references
 
-- **D14** (SPEC_01) — write events need fd/path to be attributable → **T3** here.
-- **D15** (SPEC_01) — capture agent host/namespaced PID → **T4** here, elevated to portable identity.
-- The pod-scoped filter gap (binary allowlist drops the process tree) → **T1**.
-- **ADR candidate:** "Argus does not kill processes; enforcement, if ever, is return-error-first" —
-  capture once SPEC_03 opens.
+- **D14** (SPEC_01) — write events need fd/path to be attributable → **T3**, done (0.80 on real data).
+- **D15** (SPEC_01) — capture agent host/namespaced PID → **T4**, spiked → deferred (see findings).
+- The pod-scoped filter gap (binary allowlist drops the process tree) → **T1**, done.
+
+## SPEC_03 candidates (carried forward — do not forget)
+
+- **D15 — agent host-PID identity** (precision): implement the validated observer-side pod-root
+  resolution; make it runtime-agnostic (don't hard-code the containerd parent). See "D15 spike findings".
+- **OTel-GenAI hybrid SDK format** (interop/adoption): per "Locked decisions".
+- **Intent-scoped enforcement** (the deferred moat-extension): **Argus does not kill processes** —
+  return-error-first, never SIGKILL (Tetragon TOCTOU risk). ADR-worthy when SPEC_03 opens.
+- **Bare-host install** (reach/north-star): rides on D15's portable identity.
 
 ---
 
