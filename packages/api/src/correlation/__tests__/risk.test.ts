@@ -49,6 +49,15 @@ describe("risk scoring", () => {
       expect(tier(netEvent("203.0.113.9"))).toBe("high");
       expect(tier(netEvent("203.0.113.9"), ["203.0.113.9"])).toBe("low");
     });
+
+    it("classes a loopback connect LOW regardless of allowlist (benign by destination)", () => {
+      expect(tier(netEvent("127.0.0.1"))).toBe("low");
+      expect(tier(netEvent("::1"))).toBe("low");
+    });
+
+    it("classes a bare-filename credential read HIGH", () => {
+      expect(tier(fileEvent("server.pem"))).toBe("high");
+    });
   });
 
   describe("configurable profile", () => {

@@ -11,7 +11,7 @@ by the Plan phase (`/keel:plan`) and ticked off slice by slice during Build.
 | Spec | Subsystem | Status |
 |---|---|---|
 | [SPEC_01](./SPEC_01_correlation_accuracy.md) | Correlation engine — accuracy harness & unexplained-behavior detection | 🟢 Build complete (all 11 slices + HTTP-contract tests merged) |
-| [SPEC_02](./SPEC_02_trustworthy_unexplained.md) | Trustworthy unexplained-behaviour — pod-scoped capture, risk-ranked triage, D14/D15 telemetry, OTel-GenAI SDK | 🟢 Define complete (ready for Plan) |
+| [SPEC_02](./SPEC_02_trustworthy_unexplained.md) | Trustworthy unexplained-behaviour — pod-scoped capture, risk-ranked triage, D14/D15 telemetry, OTel-GenAI SDK | 🟡 Build in progress (Slices 1–5 + 2b done; 6/7/8 pending) |
 
 ## Conventions
 

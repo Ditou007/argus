@@ -117,7 +117,11 @@ Capture completeness is gated at **two** layers, both currently a binary allowli
   (name + namespace). Keep `DENY_POD_PREFIXES` (argus's own pods, postgres, redis) and
   `DENY_BINARIES` (infra noise); add `DENY_NAMESPACES` (kube-system etc.). Preserve the binary
   allowlist as a **fallback only when no pod metadata is present** (compose/host mode). This recovers
-  the `agent → sh → curl` **exec tree** (and curl's command line via exec args).
+  the `agent → sh → curl` **exec tree** (and curl's command line via exec args). *(As-built asymmetry:
+  the kernel layer (T1b) scopes by the `argus.dev/track` pod **label**, but Tetragon events carry no
+  pod labels — only `namespace`/`name` — so the ingestion filter scopes by a deny-list, not the same
+  label. In a shared cluster this can ingest exec/exit from other non-system pods; acceptable here,
+  noted for the bare-host follow-up.)*
 - **T1b — kernel (`k8s/policies/*.yaml` TracingPolicies).** Both policies scope every kprobe
   (`fd_install`, `sys_write`, `tcp_connect`, `tcp_sendmsg`) with `matchBinaries: In [python,node]`,
   so Tetragon **never emits** them for `sh`/`curl` — the spawned tool's network/file *behaviour* is
@@ -135,10 +139,15 @@ Turn the helper into the headline product:
   - **HIGH (1.0)** — credential/secret reads (`**/.ssh/**`, `**/.aws/**`, `**/.kube/**`,
     `/etc/shadow`, `**/*.pem`, `**/*.key`, `**/.netrc`, `**/.git-credentials`); **and** `tcp_connect`
     to a destination **not** on the session's egress allowlist.
-  - **MEDIUM (0.5)** — other home/dotfile/config reads; `file_write` outside `/tmp`; connect to an
-    allowlisted dest with no active network action.
-  - **LOW (0.1)** — `/tmp` & `/proc/self` writes, stdio fds, loopback connects; **default floor** for
-    anything unmatched.
+  - **MEDIUM (0.5)** — any other file path (the default file tier; e.g. a `file_write` to `/app/...`).
+  - **LOW (0.1)** — `/tmp` & `/proc/self` paths, **loopback / `0.0.0.0` connects**, allowlisted
+    destinations; **default floor** for anything unmatched.
+  - **Shipped classifier is path/destination-based (as-built note).** It keys on the *resource* (file
+    path or socket `daddr`), **not** on read-vs-write, and treats every allowlisted (or loopback)
+    destination as LOW. Two spec'd refinements are **deliberately deferred** as they need per-event
+    action context the pure scorer doesn't have: (a) read/write-specific tiers, and (b)
+    "allowlisted-but-no-*active*-action → MEDIUM". The default profile errs toward fewer false
+    positives (loopback/allowlisted → LOW).
 - **Sensitivity is a configurable profile, not hardcoded.** Tiers, weights, path globs, and the
   egress baseline load through a **profile schema** with a shipped default; a consumer of Argus can
   supply their own profile to override any of it. No magic values in code (code-craft).

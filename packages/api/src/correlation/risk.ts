@@ -42,6 +42,8 @@ export const DEFAULT_SENSITIVITY_PROFILE: SensitivityProfile = {
     "/etc/shadow",
     "**/*.pem",
     "**/*.key",
+    "*.pem",
+    "*.key",
     "**/.netrc",
     "**/.git-credentials",
   ],
@@ -73,6 +75,13 @@ const globToRegExp = (glob: string): RegExp => {
 const matchesAnyGlob = (path: string, globs: readonly string[]): boolean =>
   globs.some((g) => globToRegExp(g).test(path));
 
+/** Loopback / link-local — benign by destination regardless of the allowlist. */
+const LOOPBACK = /^(127\.|::1$|0\.0\.0\.0$)/;
+
+/** A destination is "expected" if it's loopback or on the effective allowlist. */
+const isExpectedDestination = (daddr: string, allowlist: readonly string[]): boolean =>
+  LOOPBACK.test(daddr) || allowlist.includes(daddr);
+
 /**
  * Classify a resource's sensitivity tier under a profile.
  * @function sensitivityOf
@@ -93,7 +102,7 @@ export const sensitivityOf = (
   }
   if (resource.kind === "network") {
     const allowed = egressAllowlist ?? profile.egressAllowlist;
-    return allowed.includes(resource.daddr) ? "low" : profile.defaultNetworkTier;
+    return isExpectedDestination(resource.daddr, allowed) ? "low" : profile.defaultNetworkTier;
   }
   return "low";
 };
