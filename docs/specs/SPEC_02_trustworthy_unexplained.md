@@ -4,9 +4,9 @@
 (identity + unexplained productisation) · `k8s/policies/**` + `policies/**` (TracingPolicies, D14) ·
 `sample-agent/argus_sdk.py` (host-PID + OTel-GenAI format) · `packages/eval/**` (re-capture validation).
 **Last updated:** 2026-06-15
-**Status:** 🟡 Build — Slices 1–5 + 2b **done.** Gap A closed (pod-scoped capture verified on real
-data); the unexplained-behaviour gap is now a product (coverage score + risk-ranked triage feed,
-consumer-configurable profile, declared∪config egress). Slices 6 (D14), 7 (D15), 8 (OTel SDK) pending.
+**Status:** 🟡 Build — Slices 1–6 + 2b **done.** Gap A closed; the gap is a product (coverage + risk
+triage); **D14 done** (writes carry fd→path, attributed at 0.80 on real data). Slices 7 (D15 — spike),
+8 (OTel SDK) pending.
 
 ---
 
@@ -259,11 +259,20 @@ our kernel build.
   risk-ranked and annotated (resource, sensitivity, best_confidence). Egress allowlist = the
   session's declared dests ∪ config. Tests: `triage.test.ts` (4) + HTTP contract (`ssh` read ranks
   above `/tmp` write; zero-event → coverage 1.0, empty feed).
-- [ ] **Slice 6 — D14: write events carry fd→path** *(T3)* · **Delivers:** TracingPolicy (shipped in
-  the install) + ingestion threading so `*_sys_write` → true `file_write` matches · **Acceptance:**
-  fresh re-capture; a write attributes to its `file_write` action at confidence ≥ 0.7 · **Test:**
-  re-captured fixture through the real engine · **DoD:** test green · `keel eval` green · policy +
-  spec touched · **Depends on:** 1, 2
+- [x] **Slice 6 — D14: write events carry fd→path** *(T3)* — **done 2026-06-18.** `sys_write` arg 0
+  re-typed `fd`→`int` (the `fd` type resolved to empty) so writes carry the fd number; a per-process
+  `fd→path` resolver (`correlation/fd-path.ts`, from `fd_install`) resolves each write's fd. Wired
+  into **both** the triage (`resolveFdPaths` → write gets a file resource + sensitivity) and the
+  **correlator** (`injectResolvedPath` enriches candidates so the `file_path` signal attributes the
+  write). **Reproducible evidence:** `fixtures/spec02/d14-write-resolution.json` (real captured
+  checkpoint opens + writes) + `spec02-d14.test.ts` resolve real writes to their paths offline.
+  **Live-observed (this re-capture, not a committed fixture):** declared `checkpoint` `file_write`
+  actions attributed 105 `__arm64_sys_write` events at confidence 0.80 (≥ 0.7) — previously
+  false-unexplained. Tests: `fd-path.test.ts` (6) + triage write-resolution + the real-data fixture
+  test. **Known limit:** the correlator resolves fds only within an action's ±1s candidate window, so
+  a long-lived fd opened in an earlier window won't resolve there (triage, which scans the whole
+  session, still does); fine for the open→write→close pattern, noted for the bare-host follow-up.
+  **Depends on:** 1, 2
 - [ ] **Slice 7 — D15: host/namespaced PID as portable identity** *(T4)* · **Delivers:** agent host
   PID captured; `process-identity` exact-matches the agent's own syscalls (1.0), no longer
   pod-name-only · **Acceptance:** fresh re-capture; exact-PID path fires; identity unit keyed on host

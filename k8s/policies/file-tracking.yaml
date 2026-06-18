@@ -21,7 +21,9 @@ spec:
     - call: "sys_write"
       syscall: true
       args:
+        # The fd as a raw int — Tetragon's "fd" type resolved to empty here, so we
+        # capture the number and resolve it to a path via fd_install (D14 resolver).
         - index: 0
-          type: "fd"
+          type: "int"
         - index: 2
           type: "size_t"

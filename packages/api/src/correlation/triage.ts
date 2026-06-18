@@ -13,6 +13,7 @@ import {
 } from "./risk.js";
 import { extractResource, type ResourceRef } from "./resource.js";
 import { buildEgressAllowlist } from "./egress.js";
+import { resolveFdPaths } from "./fd-path.js";
 
 /** Minimal event shape the triage builder needs. */
 export interface TriageInputEvent {
@@ -20,6 +21,7 @@ export interface TriageInputEvent {
   readonly event_type: string;
   readonly function_name: string | null;
   readonly process_binary: string | null;
+  readonly process_pid: number;
   readonly raw_event: Record<string, unknown>;
 }
 
@@ -71,12 +73,17 @@ export const buildTriageReport = (input: TriageInput): TriageReport => {
   const { allEvents, unexplainedIds, bestConfidence, declaredDestinations } = input;
   const profile = input.profile ?? DEFAULT_SENSITIVITY_PROFILE;
   const allowlist = buildEgressAllowlist(declaredDestinations, profile);
+  // D14: a write carries only an fd — resolve it to the path it was opened on.
+  const resolvedPaths = resolveFdPaths(allEvents);
 
   const events: TriageEvent[] = allEvents
     .filter((e) => unexplainedIds.has(e.id))
     .map((e) => {
       const best_confidence = bestConfidence.get(e.id) ?? 0;
-      const resource = extractResource(e.raw_event);
+      const writePath = resolvedPaths.get(e.id);
+      const resource: ResourceRef = writePath
+        ? { kind: "file", path: writePath }
+        : extractResource(e.raw_event);
       return {
         id: e.id,
         event_type: e.event_type,

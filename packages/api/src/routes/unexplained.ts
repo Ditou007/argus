@@ -21,9 +21,7 @@ export const parseThreshold = (raw: unknown): number | null => {
   return Number.isFinite(value) && value >= MIN_THRESHOLD && value <= MAX_THRESHOLD ? value : null;
 };
 
-interface EventRow extends TriageInputEvent {
-  readonly process_pid: number;
-}
+type EventRow = TriageInputEvent;
 
 /**
  * Load everything the triage report needs for a session: every event in its
