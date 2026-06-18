@@ -1,6 +1,7 @@
 import type pg from "pg";
 import type { CorrelationResult, EventCandidate } from "./types.js";
 import { parseActionHints } from "./action-parser.js";
+import { resolveFdPaths, injectResolvedPath } from "./fd-path.js";
 import { createDnsCache } from "./dns-cache.js";
 import { createSignalRegistry } from "./signal-registry.js";
 import { DEFAULT_CORRELATION_CONFIG, type CorrelationConfig } from "./config.js";
@@ -99,8 +100,16 @@ export const createCorrelator = (pool: pg.Pool, config: CorrelationConfig = DEFA
       ended_at: new Date(action.ended_at),
     };
 
+    // 4b. D14: a write carries only an fd — resolve it to the path it was opened
+    // on (from fd_install in the same window) so file_write actions attribute it.
+    const resolvedWritePaths = resolveFdPaths(candidates);
+    const enriched = candidates.map((event) => {
+      const path = resolvedWritePaths.get(event.id);
+      return path ? { ...event, raw_event: injectResolvedPath(event.raw_event, path) } : event;
+    });
+
     // 5. Score each candidate
-    const scored = candidates
+    const scored = enriched
       .map((event) => registry.scoreEvent(event, actionWindow, hints))
       .filter((s) => s !== null);
 

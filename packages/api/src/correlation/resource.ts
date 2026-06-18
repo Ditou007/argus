@@ -52,6 +52,23 @@ export const extractSockArg = (raw: Raw): SockDestination | null => {
   return null;
 };
 
+/**
+ * Extract the first integer arg from a raw kprobe event (`intArg`/`int_arg`) —
+ * e.g. the file descriptor on `fd_install` / `sys_write`.
+ * @function extractFd
+ * @param raw - The raw Tetragon event.
+ * @returns The integer, or null when there is no int arg.
+ */
+export const extractFd = (raw: Raw): number | null => {
+  const args = kprobeArgs(raw);
+  if (!args) return null;
+  for (const arg of args) {
+    const v = (arg.intArg ?? arg.int_arg) as unknown;
+    if (typeof v === "number") return v;
+  }
+  return null;
+};
+
 /** The resource a syscall touched — a file, a network destination, or neither. */
 export type ResourceRef =
   | { readonly kind: "file"; readonly path: string }

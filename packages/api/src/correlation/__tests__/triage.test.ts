@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { buildTriageReport, type TriageInputEvent } from "../triage.js";
 
-const ev = (id: number, raw: Record<string, unknown>): TriageInputEvent => ({
+const ev = (id: number, raw: Record<string, unknown>, over: Partial<TriageInputEvent> = {}): TriageInputEvent => ({
   id,
   event_type: "process_kprobe",
   function_name: "fd_install",
   process_binary: "agent",
+  process_pid: 100,
   raw_event: raw,
+  ...over,
 });
 
 const ssh = { process_kprobe: { args: [{ file_arg: { path: "/root/.ssh/id_rsa" } }] } };
@@ -52,6 +54,21 @@ describe("buildTriageReport", () => {
     const byId = Object.fromEntries(r.events.map((e) => [e.id, e.sensitivity]));
     expect(byId[20]).toBe("low"); // declared
     expect(byId[21]).toBe("high"); // undeclared
+  });
+
+  it("resolves a write's fd to its path (D14) so the write gets a file resource", () => {
+    // fd_install opens fd 3 → ~/.ssh/id_rsa; a later write on fd 3 is the (undeclared) exfil write.
+    const open = ev(30, { process_kprobe: { args: [{ intArg: 3 }, { fileArg: { path: "/root/.ssh/id_rsa" } }] } });
+    const wr = ev(31, { process_kprobe: { args: [{ intArg: 3 }, { sizeArg: "9" }] } }, { function_name: "__arm64_sys_write" });
+    const r = buildTriageReport({
+      allEvents: [open, wr],
+      unexplainedIds: new Set([31]),
+      bestConfidence: new Map(),
+      declaredDestinations: [],
+    });
+    const write = r.events.find((e) => e.id === 31);
+    expect(write?.resource).toEqual({ kind: "file", path: "/root/.ssh/id_rsa" });
+    expect(write?.sensitivity).toBe("high"); // a write to the ssh key, now attributable
   });
 
   it("a zero-event session is fully covered with an empty feed", () => {
