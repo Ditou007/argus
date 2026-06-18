@@ -14,6 +14,7 @@ spec:
     metadata:
       labels:
         app: long-agent
+        argus.dev/track: "true"
     spec:
       restartPolicy: Never
       containers:
@@ -32,6 +33,10 @@ spec:
               value: "15"
             - name: ARGUS_AGENT_DELAY
               value: "2.0"
+            # Routable, non-allowlisted dest so the undeclared curl exfil actually
+            # connects (the link-local default produced no tcp_connect in kind).
+            - name: ARGUS_EXFIL_DEST
+              value: "http://example.com/payload.sh"
           envFrom:
             - secretRef:
                 name: llm-keys

@@ -4,7 +4,8 @@
 (identity + unexplained productisation) · `k8s/policies/**` + `policies/**` (TracingPolicies, D14) ·
 `sample-agent/argus_sdk.py` (host-PID + OTel-GenAI format) · `packages/eval/**` (re-capture validation).
 **Last updated:** 2026-06-15
-**Status:** 🟡 Build — Slice 1 (T0 real-data capture) **done**; gaps observed on real data (see "Baseline findings"). Slices 2–8 pending.
+**Status:** 🟡 Build — Slices 1, 2, 2b **done** (Gap A closed: pod-scoped capture verified on real
+data — the `sh`/`curl` tree + curl's exfil `tcp_connect` are now captured). Slices 3–8 pending.
 
 ---
 
@@ -108,12 +109,20 @@ events dropped by the binary allowlist → broken process tree; (b) `*_sys_write
 fd/path; (c) the agent's own syscalls failing exact-PID match because the SDK reports container
 PID 1. Freeze the raw capture as the SPEC_02 baseline corpus.
 
-### T1 — Pod-scoped ingestion (capture completeness)
-Replace the binary allowlist in `event-filter.ts` with **pod-scoped** ingestion: ingest **all**
-process/kprobe events whose process belongs to a tracked agent pod (and its descendants), using the
-pod metadata already present (`proc.pod?.name`). Keep `DENY_POD_PREFIXES` (argus's own pods,
-postgres, redis — feedback-loop guard) and `DENY_BINARIES` (infra noise). The agent → `sh` → `curl`
-process tree is now fully captured.
+### T1 — Pod-scoped capture completeness (TWO layers — discovered in Build, 2026-06-18)
+Capture completeness is gated at **two** layers, both currently a binary allowlist:
+- **T1a — ingestion (`event-filter.ts`).** Replace the binary allowlist with **pod-scoped**
+  ingestion: ingest **all** events whose process is in a tracked agent pod, using `proc.pod`
+  (name + namespace). Keep `DENY_POD_PREFIXES` (argus's own pods, postgres, redis) and
+  `DENY_BINARIES` (infra noise); add `DENY_NAMESPACES` (kube-system etc.). Preserve the binary
+  allowlist as a **fallback only when no pod metadata is present** (compose/host mode). This recovers
+  the `agent → sh → curl` **exec tree** (and curl's command line via exec args).
+- **T1b — kernel (`k8s/policies/*.yaml` TracingPolicies).** Both policies scope every kprobe
+  (`fd_install`, `sys_write`, `tcp_connect`, `tcp_sendmsg`) with `matchBinaries: In [python,node]`,
+  so Tetragon **never emits** them for `sh`/`curl` — the spawned tool's network/file *behaviour* is
+  invisible at the kernel. Replace the binary restriction with a **`podSelector`** label on agent
+  pods (or a namespaced policy), so all binaries in a tracked agent pod are traced. Validated by
+  re-capture (curl's `tcp_connect` now appears).
 
 ### T2 — Productise `detectUnexplained` (coverage + risk + triage)
 Turn the helper into the headline product:
@@ -214,10 +223,15 @@ our kernel build.
   `long_running_agent.py` + `llm_providers.py` + `k8s/long-agent-job.yaml` added. Findings recorded
   above. (Gap A rests on the captured sh/curl exec tree; exfil connect to the link-local IP produced
   no connect event — re-capture against a routable dest in a later slice.)
-- [ ] **Slice 2 — Pod-scoped ingestion filter** *(T1)* · **Delivers:** `shouldIngest` keeps the whole
-  agent process tree · **Acceptance:** `true` for agent-pod child `sh`/`curl` exec; `false` for
-  argus-own-pod + infra-noise · **Test:** unit over synthetic `TetragonEvent`s · **DoD:** test green ·
-  `keel eval` green · `event-filter.ts` + spec touched · **Depends on:** 1
+- [x] **Slice 2 — Pod-scoped ingestion filter** *(T1a)* — **done 2026-06-18.** `event-filter.ts`
+  pod-scoped (ingest the whole tracked-agent tree; deny argus-own/infra/system-ns; legacy allowlist
+  kept as no-pod fallback). `event-filter.test.ts` (10 unit tests, green).
+- [x] **Slice 2b — Pod-scoped TracingPolicy** *(T1b, discovered in Build)* — **done 2026-06-18.**
+  Both policies re-scoped from `matchBinaries` to the `argus.dev/track` `podSelector`; agent jobs
+  labelled. **Verified on a fresh re-capture (no VPN, routable exfil dest):** the agent's `sh`/`curl`
+  exec are now ingested (3, was 0) and curl's `tcp_connect` to `104.20.23.154:80` is captured (curl
+  kprobes were 0 before). Frozen as `fixtures/spec02/postfix-capture-slice2.json` +
+  `src/spec02-slice2.test.ts` (4 tests, green).
 - [ ] **Slice 3 — Risk function + configurable sensitivity profile** *(T2.1)* · **Delivers:** `risk =
   sensitivity × (1 − best_confidence)` with a shipped default profile via a profile schema ·
   **Acceptance:** HIGH unexplained event > LOW; consumer profile demoting `~/.ssh`→LOW changes its
