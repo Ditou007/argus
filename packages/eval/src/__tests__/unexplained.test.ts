@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { detectUnexplained } from "@argus/api/correlation/unexplained";
 import { DEFAULT_CORRELATION_CONFIG } from "@argus/api/correlation/config";
-import { parseCorpus } from "./corpus.js";
-import { scoreCorpus } from "./score-corpus.js";
+import { parseCorpus } from "../corpus.js";
+import { scoreCorpus } from "../score-corpus.js";
 
 const corpus = parseCorpus(
   JSON.parse(
-    readFileSync(fileURLToPath(new URL("../fixtures/corpus-real.json", import.meta.url)), "utf8")
+    readFileSync(fileURLToPath(new URL("../../fixtures/corpus-real.json", import.meta.url)), "utf8")
   )
 );
 

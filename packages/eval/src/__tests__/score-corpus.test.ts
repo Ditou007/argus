@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseCorpus } from "./corpus.js";
-import { scoreCorpus } from "./score-corpus.js";
+import { parseCorpus } from "../corpus.js";
+import { scoreCorpus } from "../score-corpus.js";
 
 const corpus = parseCorpus({
   name: "t",

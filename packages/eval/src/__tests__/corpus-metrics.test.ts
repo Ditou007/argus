@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { perActionTypeMetrics } from "./corpus-metrics.js";
-import type { CorpusScore } from "./score-corpus.js";
+import { perActionTypeMetrics } from "../corpus-metrics.js";
+import type { CorpusScore } from "../score-corpus.js";
 
 const s = (over: Partial<CorpusScore>): CorpusScore => ({
   action_id: "a",

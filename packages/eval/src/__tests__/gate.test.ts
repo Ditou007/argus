@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_CORRELATION_CONFIG } from "@argus/api/correlation/config";
-import { checkRegression } from "./gate.js";
-import { sweepThresholds, type Baseline } from "./sweep.js";
-import { parseCorpus } from "./corpus.js";
-import { scoreCorpus } from "./score-corpus.js";
+import { checkRegression } from "../gate.js";
+import { sweepThresholds, type Baseline } from "../sweep.js";
+import { parseCorpus } from "../corpus.js";
+import { scoreCorpus } from "../score-corpus.js";
 
 const baseline: Baseline = JSON.parse(
-  readFileSync(fileURLToPath(new URL("../fixtures/baseline.json", import.meta.url)), "utf8")
+  readFileSync(fileURLToPath(new URL("../../fixtures/baseline.json", import.meta.url)), "utf8")
 );
 
 describe("checkRegression", () => {
@@ -46,7 +46,7 @@ describe("checkRegression", () => {
 describe("gate catches a degraded engine config (D10)", () => {
   const corpus = parseCorpus(
     JSON.parse(
-      readFileSync(fileURLToPath(new URL("../fixtures/corpus-real.json", import.meta.url)), "utf8")
+      readFileSync(fileURLToPath(new URL("../../fixtures/corpus-real.json", import.meta.url)), "utf8")
     )
   );
 

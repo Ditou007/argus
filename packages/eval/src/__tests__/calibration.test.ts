@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { calibrationBins } from "./calibration.js";
-import { formatCalibrationReport } from "./report.js";
-import type { CorpusScore } from "./score-corpus.js";
+import { calibrationBins } from "../calibration.js";
+import { formatCalibrationReport } from "../report.js";
+import type { CorpusScore } from "../score-corpus.js";
 
 const s = (over: Partial<CorpusScore>): CorpusScore => ({
   action_id: "a",

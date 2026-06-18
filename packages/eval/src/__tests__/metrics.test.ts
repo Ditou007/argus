@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { precisionRecall } from "./metrics.js";
-import type { ScoredFixtureEvent } from "./score-fixture.js";
+import { precisionRecall } from "../metrics.js";
+import type { ScoredFixtureEvent } from "../score-fixture.js";
 
 // Hand-computed answer key for the llm_call_decoy fixture:
 //   event 1 (tcp_connect, true)  → confidence 1.0

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import express, { type Express } from "express";
 import request from "supertest";
 import type pg from "pg";
-import { createUnexplainedRouter } from "./unexplained.js";
+import { createUnexplainedRouter } from "../unexplained.js";
 
 /** A pg.Pool stub returning canned rows for each successive query() call. */
 const fakePool = (responses: { rows: unknown[] }[]): pg.Pool => {

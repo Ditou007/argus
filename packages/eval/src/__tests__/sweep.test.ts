@@ -5,9 +5,9 @@ import {
   buildBaseline,
   DEFAULT_THRESHOLDS,
   type SweepPoint,
-} from "./sweep.js";
-import type { CorpusEvent } from "./corpus.js";
-import type { CorpusScore } from "./score-corpus.js";
+} from "../sweep.js";
+import type { CorpusEvent } from "../corpus.js";
+import type { CorpusScore } from "../score-corpus.js";
 
 const ev = (over: Partial<CorpusEvent>): CorpusEvent => ({
   id: 0,

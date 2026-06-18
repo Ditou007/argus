@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type pg from "pg";
-import { findUnexplainedEvents, parseThreshold } from "./unexplained.js";
+import { findUnexplainedEvents, parseThreshold } from "../unexplained.js";
 
 /** A pg.Pool stub that records queries and returns canned rows in call order. */
 const fakePool = (responses: { rows: unknown[] }[]): { pool: pg.Pool; queries: string[] } => {

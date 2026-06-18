@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { runGateCli, type GateCliDeps } from "./gate-cli.js";
+import { runGateCli, type GateCliDeps } from "../gate-cli.js";
 
 const corpusText = readFileSync(
-  fileURLToPath(new URL("../fixtures/corpus-real.json", import.meta.url)),
+  fileURLToPath(new URL("../../fixtures/corpus-real.json", import.meta.url)),
   "utf8"
 );
 const baselineText = readFileSync(
-  fileURLToPath(new URL("../fixtures/baseline.json", import.meta.url)),
+  fileURLToPath(new URL("../../fixtures/baseline.json", import.meta.url)),
   "utf8"
 );
 

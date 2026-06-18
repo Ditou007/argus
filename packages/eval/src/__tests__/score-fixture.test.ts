@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseFixture } from "./fixture.js";
-import { scoreFixture } from "./score-fixture.js";
+import { parseFixture } from "../fixture.js";
+import { scoreFixture } from "../score-fixture.js";
 
 const fixture = parseFixture(
   JSON.parse(
-    readFileSync(fileURLToPath(new URL("../fixtures/llm_call_decoy.json", import.meta.url)), "utf8")
+    readFileSync(fileURLToPath(new URL("../../fixtures/llm_call_decoy.json", import.meta.url)), "utf8")
   )
 );
 

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseCorpus, actionTypes } from "./corpus.js";
+import { parseCorpus, actionTypes } from "../corpus.js";
 
 const corpus = parseCorpus(
   JSON.parse(
-    readFileSync(fileURLToPath(new URL("../fixtures/corpus-real.json", import.meta.url)), "utf8")
+    readFileSync(fileURLToPath(new URL("../../fixtures/corpus-real.json", import.meta.url)), "utf8")
   )
 );
 

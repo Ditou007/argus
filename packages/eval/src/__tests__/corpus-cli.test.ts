@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { runCorpusCli, type CorpusCliDeps } from "./corpus-cli.js";
+import { runCorpusCli, type CorpusCliDeps } from "../corpus-cli.js";
 
 const corpusText = readFileSync(
-  fileURLToPath(new URL("../fixtures/corpus-real.json", import.meta.url)),
+  fileURLToPath(new URL("../../fixtures/corpus-real.json", import.meta.url)),
   "utf8"
 );
 

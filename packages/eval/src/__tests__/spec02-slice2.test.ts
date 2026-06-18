@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
  * `tcp_connect` is captured (both were invisible before).
  */
 const cap = JSON.parse(
-  readFileSync(fileURLToPath(new URL("../fixtures/spec02/postfix-capture-slice2.json", import.meta.url)), "utf8")
+  readFileSync(fileURLToPath(new URL("../../fixtures/spec02/postfix-capture-slice2.json", import.meta.url)), "utf8")
 );
 
 describe("SPEC_02 Slice 2 — pod-scoped capture (post-fix)", () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { classifyEvent, curate, type RawAction, type RawEvent } from "./curate.js";
-import { parseCorpus } from "./corpus.js";
+import { classifyEvent, curate, type RawAction, type RawEvent } from "../curate.js";
+import { parseCorpus } from "../corpus.js";
 
 const action = (over: Partial<RawAction>): RawAction => ({
   id: "act-1",

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { formatReport, formatCorpusReport } from "./report.js";
-import type { Metrics } from "./metrics.js";
-import type { TypeMetrics } from "./corpus-metrics.js";
+import { formatReport, formatCorpusReport } from "../report.js";
+import type { Metrics } from "../metrics.js";
+import type { TypeMetrics } from "../corpus-metrics.js";
 
 describe("formatReport", () => {
   it("renders precision/recall with counts deterministically", () => {

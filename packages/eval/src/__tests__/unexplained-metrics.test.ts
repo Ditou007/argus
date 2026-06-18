@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { unexplainedMetrics } from "./unexplained-metrics.js";
-import type { CorpusEvent } from "./corpus.js";
-import type { CorpusScore } from "./score-corpus.js";
+import { unexplainedMetrics } from "../unexplained-metrics.js";
+import type { CorpusEvent } from "../corpus.js";
+import type { CorpusScore } from "../score-corpus.js";
 
 const ev = (over: Partial<CorpusEvent>): CorpusEvent => ({
   id: 0,

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { runCli, type CliDeps } from "./cli.js";
+import { runCli, type CliDeps } from "../cli.js";
 
 const fixtureText = readFileSync(
-  fileURLToPath(new URL("../fixtures/llm_call_decoy.json", import.meta.url)),
+  fileURLToPath(new URL("../../fixtures/llm_call_decoy.json", import.meta.url)),
   "utf8"
 );
 

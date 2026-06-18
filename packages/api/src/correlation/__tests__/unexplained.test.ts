@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectUnexplained } from "./unexplained.js";
+import { detectUnexplained } from "../unexplained.js";
 
 describe("detectUnexplained", () => {
   const THRESHOLD = 0.7;

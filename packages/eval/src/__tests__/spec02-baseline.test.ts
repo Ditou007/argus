@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
  * land and the corpus is re-captured.
  */
 const capture = JSON.parse(
-  readFileSync(fileURLToPath(new URL("../fixtures/spec02/baseline-capture.json", import.meta.url)), "utf8")
+  readFileSync(fileURLToPath(new URL("../../fixtures/spec02/baseline-capture.json", import.meta.url)), "utf8")
 );
 
 describe("SPEC_02 baseline capture (T0)", () => {

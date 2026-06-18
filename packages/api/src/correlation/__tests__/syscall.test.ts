@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeSyscall } from "./syscall.js";
+import { normalizeSyscall } from "../syscall.js";
 
 describe("normalizeSyscall", () => {
   it("strips the architecture prefix across kernels (the core SPEC_01 D11 fix)", () => {

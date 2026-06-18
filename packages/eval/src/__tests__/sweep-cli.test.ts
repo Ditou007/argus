@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { runSweepCli, type SweepCliDeps } from "./sweep-cli.js";
+import { runSweepCli, type SweepCliDeps } from "../sweep-cli.js";
 
 const corpusText = readFileSync(
-  fileURLToPath(new URL("../fixtures/corpus-real.json", import.meta.url)),
+  fileURLToPath(new URL("../../fixtures/corpus-real.json", import.meta.url)),
   "utf8"
 );
 

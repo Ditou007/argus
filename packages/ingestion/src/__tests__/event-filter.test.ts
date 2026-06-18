@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { shouldIngest } from "./event-filter.js";
-import type { TetragonEvent, ProcessInfo } from "./types.js";
+import { shouldIngest } from "../event-filter.js";
+import type { TetragonEvent, ProcessInfo } from "../types.js";
 
 const proc = (over: Partial<ProcessInfo> = {}): ProcessInfo => ({
   exec_id: "x",
