@@ -1,0 +1,38 @@
+# Long-running, production-shaped agent — the SPEC_02 capture workhorse.
+# A sustained multi-cycle session of declared actions with a few buried,
+# undeclared (benign) suspicious behaviours. Run:
+#   kubectl delete job long-agent --ignore-not-found && kubectl apply -f k8s/long-agent-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: long-agent
+  labels:
+    app: long-agent
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: long-agent
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: agent
+          image: argus-sample-agent:local
+          imagePullPolicy: Never
+          command: ["python", "-u", "long_running_agent.py"]
+          env:
+            - name: ARGUS_API_URL
+              value: "http://argus-api:3001"
+            - name: ARGUS_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ARGUS_AGENT_CYCLES
+              value: "15"
+            - name: ARGUS_AGENT_DELAY
+              value: "2.0"
+          envFrom:
+            - secretRef:
+                name: llm-keys
+                optional: true

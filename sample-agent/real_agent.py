@@ -31,90 +31,13 @@ import subprocess
 import urllib.request
 import urllib.error
 from argus_sdk import ArgusSession
+from llm_providers import get_llm_provider
 
 WORK_DIR = "/tmp/argus-research"
 ARGUS_API = os.environ.get("ARGUS_API_URL", "http://localhost:3001")
 
 
-# --- LLM Providers ---
-
-def call_anthropic(prompt, model="claude-haiku-4-5-20251001"):
-    """Call Anthropic Messages API."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        return None
-    body = json.dumps({
-        "model": model,
-        "max_tokens": 500,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode())
-        return data["content"][0]["text"]
-
-
-def call_groq(prompt, model="llama-3.1-8b-instant"):
-    """Call Groq API (OpenAI-compatible)."""
-    key = os.environ.get("GROQ_API_KEY")
-    if not key:
-        return None
-    body = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 500,
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/chat/completions",
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-            "User-Agent": "argus-agent/0.1",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode())
-        return data["choices"][0]["message"]["content"]
-
-
-def call_gemini(prompt, model="gemini-2.0-flash"):
-    """Call Google Gemini API."""
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not key:
-        return None
-    body = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 500},
-    }).encode()
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode())
-        return data["candidates"][0]["content"]["parts"][0]["text"]
-
-
-def get_llm_provider():
-    """Detect which LLM provider is configured."""
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "anthropic", call_anthropic, "https://api.anthropic.com/v1/messages"
-    if os.environ.get("GROQ_API_KEY"):
-        return "groq", call_groq, "https://api.groq.com/openai/v1/chat/completions"
-    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
-        return "gemini", call_gemini, "https://generativelanguage.googleapis.com/v1beta/models"
-    return None, None, None
+# LLM providers live in llm_providers.py (shared with long_running_agent.py).
 
 
 # --- Agent Tasks ---

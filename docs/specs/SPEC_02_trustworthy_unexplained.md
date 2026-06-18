@@ -4,7 +4,7 @@
 (identity + unexplained productisation) · `k8s/policies/**` + `policies/**` (TracingPolicies, D14) ·
 `sample-agent/argus_sdk.py` (host-PID + OTel-GenAI format) · `packages/eval/**` (re-capture validation).
 **Last updated:** 2026-06-15
-**Status:** 🟢 Planned — 8-slice breakdown committed in `## Plan`. Ready for `/keel:build` (Slice 1 = T0 real-data capture).
+**Status:** 🟡 Build — Slice 1 (T0 real-data capture) **done**; gaps observed on real data (see "Baseline findings"). Slices 2–8 pending.
 
 ---
 
@@ -59,6 +59,31 @@ corpus (the acceptance D14/D15 already demand).
   the live capture grounds the fixture; the gate runs on the frozen fixture).
 
 ---
+
+## Baseline findings (Slice 1 / T0 — observed on real data, 2026-06-15)
+
+Captured a real kind+Tetragon session: `long_running_agent.py`, 15 cycles, **real Groq calls**,
+with buried undeclared behaviour (credential read, `sh -c "curl … | sh"` chain, unreported write).
+**25,133 raw kernel events; 2,323 ingested for the agent pod** (host PID `14038`). Frozen as
+`packages/eval/fixtures/spec02/baseline-capture.json`; pinned by `src/spec02-baseline.test.ts`.
+
+- **Gap A (process tree) — confirmed.** The kernel saw the full `python → sh → sh → curl` exfil
+  chain; Argus ingested **only the 2 `python` exec events, zero `sh`/`curl`** — the binary allowlist
+  drops the spawned tree. → **T1 / Slice 2**.
+- **Gap B (write path) — confirmed.** 702 `__arm64_sys_write` events carry only a `sizeArg` (byte
+  count), **no fd/path** — writes are unattributable to a file. → **T3 / D14**.
+- **Gap C (identity PID) — confirmed.** SDK declared the agent at **container PID 1**; events carry
+  **host PID 14038** — exact-PID identity match can never fire. → **T4 / D15**.
+- **Honest caveat (egress noise — does not affect the gaps).** A work VPN was toggled off/on
+  mid-capture, which disrupted *external egress only*: some `httpbin.org` `network_request` actions
+  failed (503/timeout) and a few actions correlated zero events. Critically, **the agent→api control
+  plane was never disrupted** (0 failed SDK POSTs), so the declared-action record is complete and
+  there is **no false-unexplained contamination**. The three gaps rest on *local* syscalls (exec
+  tree / write args / PID) and are unaffected. Separately, the exfil `tcp_connect` to
+  `169.254.169.254` produced no connect event (link-local, unroutable in kind), so Gap A rests on the
+  captured `sh`/`curl` *exec* tree. **Action:** the Slice 2 (T1) re-capture must run with the VPN
+  stable and target a **routable, non-allowlisted** exfil destination, to also exercise the
+  unexplained-connect risk path (T2). Arch is **arm64** (`__arm64_sys_*`), confirming D11.
 
 ## Locked decisions (from the Define interview, 2026-06-15)
 
@@ -183,12 +208,12 @@ the scary slice** — host-mappable PID inside a container may need Downward API
 Tetragon host-PID join and may warrant a spike; D14 fd→path depends on Tetragon arg extraction in
 our kernel build.
 
-- [ ] **Slice 1 — Baseline real-data capture & gap characterisation** *(T0)* · **Delivers:** frozen
-  SPEC_02 baseline corpus from a fresh k8s capture + written 3-gap characterisation in this spec ·
-  **Acceptance:** corpus has the child `curl` syscall event but lacks its parent `sh`/`curl` exec
-  events under the current filter; writes show no path; agent syscalls show container PID 1 ·
-  **Test:** fixture presence/shape assertion in `packages/eval` · **DoD:** test green · `keel eval`
-  green · spec characterisation updated · within PR budget · **Depends on:** —
+- [x] **Slice 1 — Baseline real-data capture & gap characterisation** *(T0)* — **done 2026-06-15.**
+  Frozen `packages/eval/fixtures/spec02/baseline-capture.json` + `src/spec02-baseline.test.ts` (5
+  tests) pin all three gaps from a real 15-cycle Groq session; production-shaped
+  `long_running_agent.py` + `llm_providers.py` + `k8s/long-agent-job.yaml` added. Findings recorded
+  above. (Gap A rests on the captured sh/curl exec tree; exfil connect to the link-local IP produced
+  no connect event — re-capture against a routable dest in a later slice.)
 - [ ] **Slice 2 — Pod-scoped ingestion filter** *(T1)* · **Delivers:** `shouldIngest` keeps the whole
   agent process tree · **Acceptance:** `true` for agent-pod child `sh`/`curl` exec; `false` for
   argus-own-pod + infra-noise · **Test:** unit over synthetic `TetragonEvent`s · **DoD:** test green ·
