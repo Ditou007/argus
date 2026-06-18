@@ -26,7 +26,12 @@
       "rules": [
         {
           "when": "^packages/api/src/correlation/",
-          "requireTouched": "^docs/specs/SPEC_01_correlation_accuracy\\.md$"
+          "requireTouched": "^docs/specs/SPEC_0(1|2)_.*\\.md$",
+          "$note": "Correlation is shared by SPEC_01 (scoring core) and SPEC_02 (identity + unexplained productisation) — touching either spec satisfies the rule."
+        },
+        {
+          "when": "^packages/ingestion/src/event-filter\\.ts$",
+          "requireTouched": "^docs/specs/SPEC_02_trustworthy_unexplained\\.md$"
         }
       ]
     }

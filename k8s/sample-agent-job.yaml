@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         app: sample-agent
+        argus.dev/track: "true"
     spec:
       restartPolicy: Never
       containers:

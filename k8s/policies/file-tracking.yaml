@@ -1,10 +1,15 @@
-# TracingPolicy CRD: track file operations by Python and Node agents
-# Applied via kubectl — Tetragon picks it up automatically
+# TracingPolicy CRD: track file operations in tracked agent pods.
+# Pod-scoped (SPEC_02 T1b): scoped by the `argus.dev/track: "true"` pod label
+# instead of a python/node binary allowlist — so a spawned tool's file activity
+# (e.g. an undeclared `curl`/`sh`) is captured too, not just the agent binary.
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
 metadata:
   name: file-tracking
 spec:
+  podSelector:
+    matchLabels:
+      argus.dev/track: "true"
   kprobes:
     - call: "fd_install"
       syscall: false
@@ -13,20 +18,6 @@ spec:
           type: int
         - index: 1
           type: "file"
-      selectors:
-        - matchBinaries:
-            - operator: "In"
-              values:
-                - "/usr/local/bin/python"
-                - "/usr/local/bin/python3"
-                - "/usr/local/bin/python3.12"
-                - "/usr/local/bin/python3.13"
-                - "/usr/bin/python"
-                - "/usr/bin/python3"
-                - "/usr/bin/python3.12"
-                - "/usr/bin/python3.13"
-                - "/usr/bin/node"
-                - "/usr/local/bin/node"
     - call: "sys_write"
       syscall: true
       args:
@@ -34,17 +25,3 @@ spec:
           type: "fd"
         - index: 2
           type: "size_t"
-      selectors:
-        - matchBinaries:
-            - operator: "In"
-              values:
-                - "/usr/local/bin/python"
-                - "/usr/local/bin/python3"
-                - "/usr/local/bin/python3.12"
-                - "/usr/local/bin/python3.13"
-                - "/usr/bin/python"
-                - "/usr/bin/python3"
-                - "/usr/bin/python3.12"
-                - "/usr/bin/python3.13"
-                - "/usr/bin/node"
-                - "/usr/local/bin/node"

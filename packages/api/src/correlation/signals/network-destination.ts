@@ -1,35 +1,12 @@
 import type { SignalMatcher } from "../types.js";
 import type { CorrelationConfig } from "../config.js";
+import { extractSockArg } from "../resource.js";
 
 const NETWORK_FUNCTIONS = new Set(["tcp_connect", "tcp_sendmsg"]);
 
 /** Network-destination only applies to actions that talk to the network. */
 const isNetworkAction = (actionType: string): boolean =>
   actionType === "network_request" || actionType === "llm_call";
-
-// Extract sock_arg from raw kprobe event args
-const extractSockArg = (raw: Record<string, unknown>): { daddr: string; dport: number } | null => {
-  const kprobe =
-    (raw.process_kprobe as Record<string, unknown>) ??
-    (raw.processKprobe as Record<string, unknown>);
-  if (!kprobe) return null;
-
-  const args = kprobe.args as Array<Record<string, unknown>> | undefined;
-  if (!args) return null;
-
-  for (const arg of args) {
-    // gRPC camelCase or JSON snake_case
-    const sock = (arg.sockArg ?? arg.sock_arg) as Record<string, unknown> | undefined;
-    if (sock && sock.daddr) {
-      return {
-        daddr: String(sock.daddr),
-        dport: Number(sock.dport ?? 0),
-      };
-    }
-  }
-
-  return null;
-};
 
 /** Network-destination signal: does the event's socket target match the action's? */
 export const networkDestination = (config: CorrelationConfig): SignalMatcher => (event, _action, hints) => {

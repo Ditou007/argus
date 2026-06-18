@@ -20,6 +20,7 @@ spec:
     metadata:
       labels:
         app: real-agent
+        argus.dev/track: "true"
     spec:
       restartPolicy: Never
       containers:
