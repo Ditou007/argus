@@ -4,8 +4,9 @@
 (identity + unexplained productisation) · `k8s/policies/**` + `policies/**` (TracingPolicies, D14) ·
 `sample-agent/argus_sdk.py` (host-PID + OTel-GenAI format) · `packages/eval/**` (re-capture validation).
 **Last updated:** 2026-06-15
-**Status:** 🟡 Build — Slices 1, 2, 2b **done** (Gap A closed: pod-scoped capture verified on real
-data — the `sh`/`curl` tree + curl's exfil `tcp_connect` are now captured). Slices 3–8 pending.
+**Status:** 🟡 Build — Slices 1–5 + 2b **done.** Gap A closed (pod-scoped capture verified on real
+data); the unexplained-behaviour gap is now a product (coverage score + risk-ranked triage feed,
+consumer-configurable profile, declared∪config egress). Slices 6 (D14), 7 (D15), 8 (OTel SDK) pending.
 
 ---
 
@@ -243,11 +244,12 @@ our kernel build.
   `network_request`/`llm_call` actions; `buildEgressAllowlist(declared, profile)` unions them with the
   config baseline. `__tests__/egress.test.ts` (3 tests): declared→not HIGH, config→not HIGH,
   neither→HIGH.
-- [ ] **Slice 5 — Coverage score + risk-ranked triage feed** *(T2.3)* · **Delivers:** `GET
-  /sessions/:id/unexplained` returns `{total, explained, unexplained, coverage_ratio, risk_score,
-  events[]}` sorted by risk · **Acceptance:** unexplained `~/.ssh/id_rsa` read ranks above `/tmp/x`
-  write; zero-event session → ratio 1.0, empty feed · **Test:** integration on endpoint contract ·
-  **DoD:** test green · `keel eval` green · spec touched · **Depends on:** 3, 4
+- [x] **Slice 5 — Coverage score + risk-ranked triage feed** *(T2.3)* — **done 2026-06-18.**
+  `correlation/triage.ts` `buildTriageReport` (pure); `GET /sessions/:id/unexplained` now returns
+  `{ threshold, total, explained, unexplained, coverage_ratio, risk_score, events[] }` with events
+  risk-ranked and annotated (resource, sensitivity, best_confidence). Egress allowlist = the
+  session's declared dests ∪ config. Tests: `triage.test.ts` (4) + HTTP contract (`ssh` read ranks
+  above `/tmp` write; zero-event → coverage 1.0, empty feed).
 - [ ] **Slice 6 — D14: write events carry fd→path** *(T3)* · **Delivers:** TracingPolicy (shipped in
   the install) + ingestion threading so `*_sys_write` → true `file_write` matches · **Acceptance:**
   fresh re-capture; a write attributes to its `file_write` action at confidence ≥ 0.7 · **Test:**

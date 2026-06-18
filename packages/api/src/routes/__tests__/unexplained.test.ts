@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type pg from "pg";
-import { findUnexplainedEvents, parseThreshold } from "../unexplained.js";
+import { loadUnexplainedData, parseThreshold } from "../unexplained.js";
 
 /** A pg.Pool stub that records queries and returns canned rows in call order. */
 const fakePool = (responses: { rows: unknown[] }[]): { pool: pg.Pool; queries: string[] } => {
@@ -33,15 +33,17 @@ describe("parseThreshold", () => {
   });
 });
 
-describe("findUnexplainedEvents", () => {
-  it("returns events not correlated at or above the threshold to any action", async () => {
+describe("loadUnexplainedData", () => {
+  it("marks events not correlated at or above the threshold as unexplained", async () => {
     const { pool, queries } = fakePool([
       { rows: [SESSION] },
       { rows: [{ id: 1 }, { id: 2 }, { id: 99 }] }, // session events
       { rows: [{ event_id: 1, confidence: 0.9 }, { event_id: 2, confidence: 0.85 }] }, // 99 uncorrelated
+      { rows: [{ action_type: "network_request", action_name: "x", input_summary: "GET https://api.x.com" }] },
     ]);
-    const events = await findUnexplainedEvents(pool, "s1", 0.7);
-    expect(events?.map((e) => (e as { id: number }).id)).toEqual([99]);
+    const data = await loadUnexplainedData(pool, "s1", 0.7);
+    expect([...(data?.unexplainedIds ?? [])]).toEqual([99]);
+    expect(data?.bestConfidence.get(1)).toBe(0.9);
     // the event window must stay padded ±1s to match the engine's candidate window
     expect(queries[1]).toContain("- interval '1 second'");
     expect(queries[1]).toContain("+ interval '1 second'");
@@ -49,6 +51,6 @@ describe("findUnexplainedEvents", () => {
 
   it("returns null when the session does not exist", async () => {
     const { pool } = fakePool([{ rows: [] }]);
-    expect(await findUnexplainedEvents(pool, "missing", 0.7)).toBeNull();
+    expect(await loadUnexplainedData(pool, "missing", 0.7)).toBeNull();
   });
 });

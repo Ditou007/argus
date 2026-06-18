@@ -17,19 +17,36 @@ const appWith = (pool: pg.Pool): Express => {
 };
 
 const SESSION = { id: "s1", pod_name: "pod-a", agent_pid: 1, started_at: "t0", ended_at: "t1" };
+const sshRead = { process_kprobe: { args: [{ file_arg: { path: "/root/.ssh/id_rsa" } }] } };
+const tmpWrite = { process_kprobe: { args: [{ file_arg: { path: "/tmp/x" } }] } };
+const NO_ACTIONS = { rows: [] };
 
 describe("GET /api/sessions/:id/unexplained (HTTP contract)", () => {
-  it("200s with the unexplained events and threshold envelope", async () => {
+  it("200s with a coverage + risk-ranked triage envelope", async () => {
     const pool = fakePool([
       { rows: [SESSION] },
-      { rows: [{ id: 1 }, { id: 2 }, { id: 99 }] }, // session events
-      { rows: [{ event_id: 1, confidence: 0.9 }, { event_id: 2, confidence: 0.85 }] }, // 99 uncorrelated
+      {
+        rows: [
+          { id: 1, event_type: "process_kprobe", function_name: "fd_install", process_binary: "python", raw_event: {} },
+          { id: 2, event_type: "process_kprobe", function_name: "fd_install", process_binary: "python", raw_event: {} },
+          { id: 98, event_type: "process_kprobe", function_name: "fd_install", process_binary: "curl", raw_event: tmpWrite },
+          { id: 99, event_type: "process_kprobe", function_name: "fd_install", process_binary: "cat", raw_event: sshRead },
+        ],
+      },
+      { rows: [{ event_id: 1, confidence: 0.9 }, { event_id: 2, confidence: 0.85 }] }, // 98, 99 uncorrelated
+      NO_ACTIONS,
     ]);
     const res = await request(appWith(pool)).get("/api/sessions/s1/unexplained");
     expect(res.status).toBe(200);
     expect(res.body.threshold).toBe(0.7);
-    expect(res.body.unexplained_count).toBe(1);
-    expect(res.body.events.map((e: { id: number }) => e.id)).toEqual([99]);
+    expect(res.body.total).toBe(4);
+    expect(res.body.explained).toBe(2);
+    expect(res.body.unexplained).toBe(2);
+    expect(res.body.coverage_ratio).toBe(0.5);
+    // the unexplained ssh read (HIGH) ranks above the /tmp write (LOW)
+    expect(res.body.events.map((e: { id: number }) => e.id)).toEqual([99, 98]);
+    expect(res.body.events[0].sensitivity).toBe("high");
+    expect(res.body.risk_score).toBe(1); // the ssh read is fully unexplained → 1.0
   });
 
   it("404s for an unknown session", async () => {
@@ -44,16 +61,13 @@ describe("GET /api/sessions/:id/unexplained (HTTP contract)", () => {
     expect(res.body.error).toContain("threshold");
   });
 
-  it("honours a valid threshold query param", async () => {
-    const pool = fakePool([
-      { rows: [SESSION] },
-      { rows: [{ id: 1 }, { id: 2 }] },
-      { rows: [{ event_id: 1, confidence: 0.5 }, { event_id: 2, confidence: 0.95 }] },
-    ]);
-    // at threshold 0.9, event 1 (0.5) is unexplained, event 2 (0.95) is not
-    const res = await request(appWith(pool)).get("/api/sessions/s1/unexplained?threshold=0.9");
+  it("a zero-event session reports full coverage and an empty feed", async () => {
+    const pool = fakePool([{ rows: [SESSION] }, { rows: [] }, { rows: [] }, NO_ACTIONS]);
+    const res = await request(appWith(pool)).get("/api/sessions/s1/unexplained");
     expect(res.status).toBe(200);
-    expect(res.body.threshold).toBe(0.9);
-    expect(res.body.events.map((e: { id: number }) => e.id)).toEqual([1]);
+    expect(res.body.total).toBe(0);
+    expect(res.body.coverage_ratio).toBe(1);
+    expect(res.body.events).toEqual([]);
+    expect(res.body.risk_score).toBe(0);
   });
 });
