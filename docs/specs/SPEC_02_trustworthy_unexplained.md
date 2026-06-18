@@ -238,10 +238,11 @@ our kernel build.
   `parseSensitivityProfile` validator). Resource extraction factored into `correlation/resource.ts`
   (file_path + network_destination signals now reuse it — DRY). `__tests__/risk.test.ts` (8 tests):
   credential read > /tmp write, graded by confidence, profile override, invalid-profile rejection.
-- [ ] **Slice 4 — Egress allowlist (declared ∪ config)** *(T2.2)* · **Delivers:** network-dest
-  sensitivity from session-declared `network_request`s ∪ static config · **Acceptance:** connect to
-  declared → not HIGH; config-baseline → not HIGH; neither → HIGH · **Test:** unit, three-connect
-  case · **DoD:** test green · `keel eval` green · **Depends on:** 3
+- [x] **Slice 4 — Egress allowlist (declared ∪ config)** *(T2.2)* — **done 2026-06-18.**
+  `correlation/egress.ts`: `declaredEgressDestinations(hints)` pulls IPs from the session's
+  `network_request`/`llm_call` actions; `buildEgressAllowlist(declared, profile)` unions them with the
+  config baseline. `__tests__/egress.test.ts` (3 tests): declared→not HIGH, config→not HIGH,
+  neither→HIGH.
 - [ ] **Slice 5 — Coverage score + risk-ranked triage feed** *(T2.3)* · **Delivers:** `GET
   /sessions/:id/unexplained` returns `{total, explained, unexplained, coverage_ratio, risk_score,
   events[]}` sorted by risk · **Acceptance:** unexplained `~/.ssh/id_rsa` read ranks above `/tmp/x`
