@@ -5,7 +5,7 @@ a **chatbot agent backend** (new, tool-using, weakly-guarded, SDK-instrumented) 
 (`packages/dashboard` — chat + live Argus view) · `packages/api/src/ws/**` + `routes/unexplained`
 (live stream + triage, existing) · `README.md` (one-command quick-start).
 **Last updated:** 2026-06-18
-**Status:** 🟡 Define — spec drafted; ready for `/keel:plan`.
+**Status:** 🟢 Planned — 6-slice breakdown committed; ready for /keel:build (Slice 1 = compose capture validation).
 
 ---
 
@@ -108,6 +108,42 @@ README, reach the live "caught it" state; record and fix every gap.
   caught-it state on the verified platform; gaps found are fixed; verified-vs-expected platforms
   recorded. *(check: logged fresh-clone walkthrough with gaps→fixes.)*
 - [ ] **Gate stays green.** `keel eval` passes; SPEC_01/02 baselines and tests do not regress.
+
+---
+
+## Plan (slice breakdown — `/keel:build` walks this)
+
+Dependency-ordered. **Slice 1 is highest-risk and goes first** (it validates the "just Docker"
+bet). **Top risk:** Tetragon eBPF capture in raw compose on the Docker VM kernel is unverified
+(kind verified) — Slice 1 proves it, kind-in-docker is the documented fallback. The weak-guardrails
+agent is sandboxed and benign by construction (inert exfil target).
+
+- [ ] **Slice 1 — `docker compose up` + capture proven** *(T1)* · **Delivers:** full stack healthy
+  in one command + Tetragon capturing in compose · **Acceptance:** clean `docker compose up` → all
+  services healthy AND an agent-container syscall lands in `events`; if compose capture fails, take
+  the documented kind-in-docker fallback · **DoD:** verified on the reference platform · `keel eval`
+  green · spec touched · **Depends on:** —
+- [ ] **Slice 2 — Compose-mode correlation (pid:host)** *(T2)* · **Delivers:** declared actions
+  correlate to syscalls in compose · **Acceptance:** a compose capture shows an action's syscalls
+  attributed ≥ the committed threshold · **DoD:** re-capture verifies · `keel eval` green ·
+  **Depends on:** 1
+- [ ] **Slice 3 — Attackable tool-using agent backend** *(T3)* · **Delivers:** LLM loop +
+  `run_shell`/`read_file`/`http_get` tools, weak guardrails, SDK-instrumented, chat endpoint ·
+  **Acceptance:** benign prompt → only declared actions; malicious prompt → undeclared syscalls Argus
+  flags unexplained · **DoD:** scripted benign/malicious runs + pure-logic unit tests · `keel eval`
+  green · **Depends on:** 1, 2
+- [ ] **Slice 4 — Legible live detection renderer** *(T5)* · **Delivers:** pure formatter (triage →
+  coverage % + ranked unexplained in plain language) shared by the live view + a `pnpm demo` CLI ·
+  **Acceptance:** HIGH `~/.ssh` ranks above LOW `/tmp`; zero-unexplained → "100% coverage" · **Test:**
+  pure-formatter unit tests · **DoD:** test green · `keel eval` green · **Depends on:** — *(pure)*
+- [ ] **Slice 5 — Chat + live Argus frontend** *(T4)* · **Delivers:** one page — chat on top, live
+  unexplained feed below over the existing WS stream · **Acceptance:** malicious prompt shows the
+  reply AND the HIGH-risk unexplained event appears live below · **DoD:** live run verifies ·
+  `keel eval` green · **Depends on:** 3, 4
+- [ ] **Slice 6 — One-command README + fresh-clone validation** *(T6)* · **Delivers:** quick-start
+  (Docker + LLM key → `docker compose up` → attack → watch) + fresh-clone walkthrough · **Acceptance:**
+  a clean clone following only the README reaches the caught-it state; gaps→fixes logged; verified
+  platforms recorded · **DoD:** doc-sync green · **Depends on:** 5
 
 ---
 
