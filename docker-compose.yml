@@ -43,6 +43,58 @@ services:
       - --tracing-policy-dir=/etc/tetragon/tetragon.tp.d
       - --export-denylist={"binary_regex":["runc","containerd","dockerd","pg_isready","redis-cli"]}
 
+  # Ingestion — tails Tetragon's export file and stores events in Postgres/Redis.
+  # File mode (not gRPC) because compose-mode Tetragon exports to a mounted log file.
+  ingestion:
+    build:
+      context: .
+      dockerfile: packages/ingestion/Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: argus
+      DB_USER: argus
+      DB_PASSWORD: argus_dev
+      REDIS_HOST: redis
+      TETRAGON_MODE: file
+      TETRAGON_EXPORT_PATH: /var/run/tetragon/tetragon.log
+    volumes:
+      # Read Tetragon's export file (Tetragon writes it via the same host dir)
+      - ./data/tetragon:/var/run/tetragon:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tetragon:
+        condition: service_started
+
+  # API — REST + WebSocket live-stream over the events Postgres stores.
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    environment:
+      API_PORT: "3001"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: argus
+      DB_USER: argus
+      DB_PASSWORD: argus_dev
+      REDIS_HOST: redis
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # Sample AI agent — instrumented with Argus SDK
   sample-agent:
     build:

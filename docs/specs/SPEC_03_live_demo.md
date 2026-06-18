@@ -5,7 +5,8 @@ a **chatbot agent backend** (new, tool-using, weakly-guarded, SDK-instrumented) 
 (`packages/dashboard` — chat + live Argus view) · `packages/api/src/ws/**` + `routes/unexplained`
 (live stream + triage, existing) · `README.md` (one-command quick-start).
 **Last updated:** 2026-06-18
-**Status:** 🟢 Planned — 6-slice breakdown committed; ready for /keel:build (Slice 1 = compose capture validation).
+**Status:** 🟢 Building — Slice 1 done (full stack up via `docker compose up`; compose-mode Tetragon
+capture proven end-to-end into `events` and served by the API, no kind fallback). Slice 2 next.
 
 ---
 
@@ -87,10 +88,13 @@ README, reach the live "caught it" state; record and fix every gap.
 
 ## Done (acceptance — each becomes a test or a recorded check)
 
-- [ ] **T1 — one command, capture proven.** From clean, `docker compose up` brings all services
+- [x] **T1 — one command, capture proven.** From clean, `docker compose up` brings all services
   healthy, and a syscall from the agent container is captured into `events`. *(check: a fresh
   `docker compose up` reaches healthy + a query shows an agent-container event; if compose capture
-  fails, the spec's kind fallback is taken and documented.)*
+  fails, the spec's kind fallback is taken and documented.)* **Done 2026-06-18:** `docker compose up`
+  brings postgres/redis/api healthy + tetragon/ingestion running (ingestion has no probe, matching
+  k8s); a python agent container's `fd_install` on a marker path was captured by compose Tetragon,
+  ingested into `events`, and served via `GET /api/events`. **No kind fallback needed.**
 - [ ] **T2 — correlation works in compose.** With the agent at `pid: host`, a declared action
   attributes its syscalls at ≥ the committed threshold in a compose capture. *(test: a compose
   capture fixture through the engine shows the action's events correlated.)*
@@ -118,11 +122,14 @@ bet). **Top risk:** Tetragon eBPF capture in raw compose on the Docker VM kernel
 (kind verified) — Slice 1 proves it, kind-in-docker is the documented fallback. The weak-guardrails
 agent is sandboxed and benign by construction (inert exfil target).
 
-- [ ] **Slice 1 — `docker compose up` + capture proven** *(T1)* · **Delivers:** full stack healthy
+- [x] **Slice 1 — `docker compose up` + capture proven** *(T1)* · **Delivers:** full stack healthy
   in one command + Tetragon capturing in compose · **Acceptance:** clean `docker compose up` → all
   services healthy AND an agent-container syscall lands in `events`; if compose capture fails, take
   the documented kind-in-docker fallback · **DoD:** verified on the reference platform · `keel eval`
-  green · spec touched · **Depends on:** —
+  green · spec touched · **Depends on:** — · **Done 2026-06-18 (macOS/arm64):** added `ingestion`
+  (Tetragon file mode, reads `./data/tetragon/tetragon.log`) + `api` (port 3001, `/api/health`
+  healthcheck) compose services; full stack up; python-container `fd_install` captured → `events`
+  → API. No kind fallback.
 - [ ] **Slice 2 — Compose-mode correlation (pid:host)** *(T2)* · **Delivers:** declared actions
   correlate to syscalls in compose · **Acceptance:** a compose capture shows an action's syscalls
   attributed ≥ the committed threshold · **DoD:** re-capture verifies · `keel eval` green ·
@@ -143,7 +150,10 @@ agent is sandboxed and benign by construction (inert exfil target).
 - [ ] **Slice 6 — One-command README + fresh-clone validation** *(T6)* · **Delivers:** quick-start
   (Docker + LLM key → `docker compose up` → attack → watch) + fresh-clone walkthrough · **Acceptance:**
   a clean clone following only the README reaches the caught-it state; gaps→fixes logged; verified
-  platforms recorded · **DoD:** doc-sync green · **Depends on:** 5
+  platforms recorded · **DoD:** doc-sync green · **Depends on:** 5 · **Cold-start note (from S1
+  review):** on a fresh machine `./data/tetragon/tetragon.log` does not exist until Tetragon first
+  writes, so ingestion logs `⏳ Waiting for Tetragon export file` until then — the fresh-clone
+  walkthrough must confirm this resolves (capture starts) rather than hangs.
 
 ---
 
