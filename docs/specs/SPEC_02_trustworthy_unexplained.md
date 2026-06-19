@@ -316,6 +316,22 @@ isolated/production deployments). That slice exported `buildCandidateQuery` from
 `packages/api/src/correlation/correlator.ts` purely to unit-test compose-mode candidate selection
 (PID-keyed when there is no pod) — **no scoring or behavior change** to this spec's engine or baseline.
 
+**Risk-profile refinement (2026-06-19, SPEC_03 Slice 3):** the shipped `DEFAULT_SENSITIVITY_PROFILE`
+(`packages/api/src/correlation/risk.ts`) now classes two more noise classes LOW so a real attack
+isn't buried by it: (a) **runtime/dependency noise for BOTH instrumented runtimes** via a new
+depth-independent `lowSensitivityPathGlobs` — Node (`**/node_modules/**`) AND Python
+(`**/site-packages/**`, `**/dist-packages/**`, `**/__pycache__/**`, `**/*.pyc`, `/usr/lib/python*/**`)
+plus `/etc/resolv.conf`. This file de-noise ships in the **default** profile (it's noise for any
+node/python deployment; a credential read still scores HIGH because the credential glob is checked
+first). (b) The **network** de-noise is **demo-scoped, not default**: a new `DEMO_SENSITIVITY_PROFILE`
+(opted into via `ARGUS_SENSITIVITY_PROFILE=demo`, set only on the compose `api`) treats RFC1918
+private ranges as expected/LOW for the single-host service mesh (agent→API). The **shipped default
+stays conservative** — only loopback is LOW; private egress (lateral movement) and **link-local
+`169.254.*` (cloud-metadata SSRF, a classic exfil target) stay HIGH even in the demo profile**, so
+the product never silently hides them. Node and Python agents read entirely different dependency
+trees at load, so the file de-noise is runtime-agnostic by design. Credential globs and public-egress
+behaviour are unchanged; the eval baseline (83 tests, incl. SPEC_01/02) still passes.
+
 ---
 
 ## Non-goals (explicit)

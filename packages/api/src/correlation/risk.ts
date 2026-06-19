@@ -24,8 +24,22 @@ export interface SensitivityProfile {
   readonly credentialPathGlobs: readonly string[];
   /** Path prefixes that are LOW sensitivity (ephemeral/noise). */
   readonly lowSensitivityPathPrefixes: readonly string[];
+  /**
+   * Globs (depth-independent) that are LOW sensitivity — runtime/dependency
+   * noise common to the agent runtimes Argus instruments (Node AND Python):
+   * package dirs, bytecode, and stdlib that every process reads at load.
+   */
+  readonly lowSensitivityPathGlobs: readonly string[];
   /** Config baseline of allowed network destinations (Slice 4 unions declared dests). */
   readonly egressAllowlist: readonly string[];
+  /**
+   * Extended-regex sources for destinations treated as expected/internal (LOW)
+   * beyond loopback. EMPTY in the shipped default — a conservative default must
+   * NOT silently de-prioritise internal egress (lateral movement) or link-local
+   * (`169.254.*`, cloud-metadata SSRF, a classic exfil target). A deployment that
+   * wants its private service-mesh quietened opts in (see DEMO profile).
+   */
+  readonly expectedDestinationRegexes: readonly string[];
   /** Tier for a file path matching neither credential nor low rules. */
   readonly defaultFileTier: SensitivityTier;
   /** Tier for a connect to a destination not on the allowlist. */
@@ -47,11 +61,43 @@ export const DEFAULT_SENSITIVITY_PROFILE: SensitivityProfile = {
     "**/.netrc",
     "**/.git-credentials",
   ],
-  lowSensitivityPathPrefixes: ["/tmp/", "/var/tmp/", "/proc/self/"],
+  lowSensitivityPathPrefixes: ["/tmp/", "/var/tmp/", "/proc/self/", "/etc/resolv.conf"],
+  // Runtime/dependency noise for BOTH instrumented runtimes — a node or python
+  // agent reads hundreds of these at load; they are not "agent behaviour" and
+  // must not rank with a genuine credential read.
+  lowSensitivityPathGlobs: [
+    "**/node_modules/**", // Node deps
+    "**/site-packages/**", // Python deps (venv / system)
+    "**/dist-packages/**", // Python deps (Debian)
+    "**/__pycache__/**", // Python bytecode dir
+    "**/*.pyc", // Python bytecode
+    "/usr/lib/python*/**", // Python stdlib
+    "/usr/local/lib/python*/**",
+  ],
   egressAllowlist: [],
+  // Conservative: only loopback is benign-by-destination. Internal egress and
+  // link-local stay at defaultNetworkTier (HIGH) so lateral movement and
+  // metadata-SSRF are NOT hidden by default.
+  expectedDestinationRegexes: [],
   defaultFileTier: "medium",
   defaultNetworkTier: "high",
 };
+
+/**
+ * Demo-scoped profile: the single-host `docker compose` demo is a noisy service
+ * mesh (agent→API, Postgres, Redis on a private Docker bridge), so it opts into
+ * treating RFC1918 **private** ranges as expected/LOW — keeping the attack's
+ * PUBLIC exfil on top. Link-local (`169.254.*`, metadata SSRF) is deliberately
+ * NOT included: it stays HIGH even in the demo.
+ */
+export const DEMO_SENSITIVITY_PROFILE: SensitivityProfile = {
+  ...DEFAULT_SENSITIVITY_PROFILE,
+  expectedDestinationRegexes: ["^10\\.", "^192\\.168\\.", "^172\\.(1[6-9]|2\\d|3[01])\\."],
+};
+
+/** Select the active profile from the environment (the demo opts in via env). */
+export const profileFromEnv = (env: NodeJS.ProcessEnv = process.env): SensitivityProfile =>
+  env.ARGUS_SENSITIVITY_PROFILE === "demo" ? DEMO_SENSITIVITY_PROFILE : DEFAULT_SENSITIVITY_PROFILE;
 
 /** Convert a glob (`**` across segments, `*` within one) to an anchored RegExp. */
 const globToRegExp = (glob: string): RegExp => {
@@ -75,12 +121,21 @@ const globToRegExp = (glob: string): RegExp => {
 const matchesAnyGlob = (path: string, globs: readonly string[]): boolean =>
   globs.some((g) => globToRegExp(g).test(path));
 
-/** Loopback / link-local — benign by destination regardless of the allowlist. */
+/** Loopback — always benign by destination, regardless of profile/allowlist. */
 const LOOPBACK = /^(127\.|::1$|0\.0\.0\.0$)/;
 
-/** A destination is "expected" if it's loopback or on the effective allowlist. */
-const isExpectedDestination = (daddr: string, allowlist: readonly string[]): boolean =>
-  LOOPBACK.test(daddr) || allowlist.includes(daddr);
+/**
+ * A destination is "expected" (LOW) if it's loopback, matches one of the
+ * profile's `expectedDestinationRegexes`, or is on the effective allowlist.
+ */
+const isExpectedDestination = (
+  daddr: string,
+  allowlist: readonly string[],
+  expectedRegexes: readonly string[]
+): boolean =>
+  LOOPBACK.test(daddr) ||
+  allowlist.includes(daddr) ||
+  expectedRegexes.some((source) => new RegExp(source).test(daddr));
 
 /**
  * Classify a resource's sensitivity tier under a profile.
@@ -98,11 +153,14 @@ export const sensitivityOf = (
   if (resource.kind === "file") {
     if (matchesAnyGlob(resource.path, profile.credentialPathGlobs)) return "high";
     if (profile.lowSensitivityPathPrefixes.some((p) => resource.path.startsWith(p))) return "low";
+    if (matchesAnyGlob(resource.path, profile.lowSensitivityPathGlobs)) return "low";
     return profile.defaultFileTier;
   }
   if (resource.kind === "network") {
     const allowed = egressAllowlist ?? profile.egressAllowlist;
-    return isExpectedDestination(resource.daddr, allowed) ? "low" : profile.defaultNetworkTier;
+    return isExpectedDestination(resource.daddr, allowed, profile.expectedDestinationRegexes)
+      ? "low"
+      : profile.defaultNetworkTier;
   }
   return "low";
 };
@@ -130,7 +188,13 @@ export const riskScore = (
 const isStringArray = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === "string");
 
-const STRING_ARRAY_KEYS = ["credentialPathGlobs", "lowSensitivityPathPrefixes", "egressAllowlist"] as const;
+const STRING_ARRAY_KEYS = [
+  "credentialPathGlobs",
+  "lowSensitivityPathPrefixes",
+  "lowSensitivityPathGlobs",
+  "egressAllowlist",
+  "expectedDestinationRegexes",
+] as const;
 const TIER_KEYS = ["defaultFileTier", "defaultNetworkTier"] as const;
 
 const assertObject = (input: unknown): Record<string, unknown> => {

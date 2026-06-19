@@ -4,6 +4,8 @@ import {
   sensitivityOf,
   parseSensitivityProfile,
   DEFAULT_SENSITIVITY_PROFILE,
+  DEMO_SENSITIVITY_PROFILE,
+  profileFromEnv,
   type SensitivityProfile,
 } from "../risk.js";
 import { extractResource } from "../resource.js";
@@ -45,6 +47,26 @@ describe("risk scoring", () => {
       expect(tier(fileEvent("/app/data/report.json"))).toBe("medium");
     });
 
+    it("classes NODE runtime noise (node_modules at any depth) as LOW", () => {
+      expect(tier(fileEvent("/app/node_modules/.pnpm/debug@2.6.9/package.json"))).toBe("low");
+      expect(tier(fileEvent("/usr/local/lib/node_modules/npm/x.js"))).toBe("low");
+    });
+
+    it("classes PYTHON runtime noise (site-packages, __pycache__, .pyc, stdlib) as LOW", () => {
+      // A python agent reads these at import — runtime noise, not agent behaviour.
+      expect(tier(fileEvent("/usr/local/lib/python3.12/site-packages/requests/api.py"))).toBe("low");
+      expect(tier(fileEvent("/app/.venv/lib/python3.13/site-packages/x.py"))).toBe("low");
+      expect(tier(fileEvent("/usr/lib/python3/dist-packages/foo.py"))).toBe("low");
+      expect(tier(fileEvent("/app/__pycache__/agent.cpython-312.pyc"))).toBe("low");
+      expect(tier(fileEvent("/usr/lib/python3.12/os.py"))).toBe("low");
+    });
+
+    it("classes config/resolver noise (resolv.conf) as LOW but a real config HIGH/MEDIUM", () => {
+      expect(tier(fileEvent("/etc/resolv.conf"))).toBe("low");
+      // A genuine app file under /app is still MEDIUM (not blanket-lowered).
+      expect(tier(fileEvent("/app/packages/agent/dist/index.js"))).toBe("medium");
+    });
+
     it("classes a connect to a non-allowlisted dest HIGH, allowlisted LOW", () => {
       expect(tier(netEvent("203.0.113.9"))).toBe("high");
       expect(tier(netEvent("203.0.113.9"), ["203.0.113.9"])).toBe("low");
@@ -55,8 +77,38 @@ describe("risk scoring", () => {
       expect(tier(netEvent("::1"))).toBe("low");
     });
 
+    it("DEFAULT profile is conservative: only loopback LOW; private + link-local + public HIGH", () => {
+      // A shipped default must NOT silently de-prioritise internal egress
+      // (lateral movement) or link-local (169.254, cloud-metadata SSRF).
+      expect(tier(netEvent("127.0.0.1"))).toBe("low");
+      expect(tier(netEvent("172.22.0.5", 3001))).toBe("high"); // private — still HIGH by default
+      expect(tier(netEvent("169.254.169.254"))).toBe("high"); // metadata SSRF — HIGH by default
+      expect(tier(netEvent("1.1.1.1"))).toBe("high");
+    });
+
     it("classes a bare-filename credential read HIGH", () => {
       expect(tier(fileEvent("server.pem"))).toBe("high");
+    });
+  });
+
+  describe("demo profile (private-mesh de-noise, opt-in)", () => {
+    const demoTier = (raw: Record<string, unknown>) =>
+      sensitivityOf(extractResource(raw), DEMO_SENSITIVITY_PROFILE);
+
+    it("quietens RFC1918 private ranges to LOW", () => {
+      expect(demoTier(netEvent("172.22.0.5", 3001))).toBe("low"); // agent -> API on the bridge
+      expect(demoTier(netEvent("10.1.2.3"))).toBe("low");
+      expect(demoTier(netEvent("192.168.0.10"))).toBe("low");
+    });
+
+    it("keeps link-local (metadata SSRF) and public egress HIGH even in the demo", () => {
+      expect(demoTier(netEvent("169.254.169.254"))).toBe("high");
+      expect(demoTier(netEvent("1.1.1.1"))).toBe("high");
+    });
+
+    it("profileFromEnv selects demo only when ARGUS_SENSITIVITY_PROFILE=demo", () => {
+      expect(profileFromEnv({ ARGUS_SENSITIVITY_PROFILE: "demo" })).toBe(DEMO_SENSITIVITY_PROFILE);
+      expect(profileFromEnv({})).toBe(DEFAULT_SENSITIVITY_PROFILE);
     });
   });
 

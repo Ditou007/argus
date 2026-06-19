@@ -5,6 +5,7 @@ import { DEFAULT_CORRELATION_CONFIG } from "../correlation/config.js";
 import { parseActionHints } from "../correlation/action-parser.js";
 import { declaredEgressDestinations } from "../correlation/egress.js";
 import { buildTriageReport, type TriageReport, type TriageInputEvent } from "../correlation/triage.js";
+import { profileFromEnv } from "../correlation/risk.js";
 
 const MIN_THRESHOLD = 0;
 const MAX_THRESHOLD = 1;
@@ -123,7 +124,9 @@ export const createUnexplainedRouter = (pool: pg.Pool): IRouter => {
         return;
       }
 
-      const report: TriageReport = buildTriageReport(data);
+      // Conservative profile by default; the demo opts into private-mesh de-noise
+      // via ARGUS_SENSITIVITY_PROFILE=demo (link-local/public egress stay HIGH).
+      const report: TriageReport = buildTriageReport({ ...data, profile: profileFromEnv() });
       res.json({ threshold, ...report });
     } catch (err) {
       console.error("Failed to build unexplained triage report:", err);
