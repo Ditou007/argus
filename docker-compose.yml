@@ -126,6 +126,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # Demo dashboard (SPEC_03) — the chat + live-Argus page. The browser runs on
+  # the host and reaches the published api/agent ports, so the NEXT_PUBLIC_*
+  # defaults (localhost:3001/:4001) are correct; no build args needed.
+  dashboard:
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/demo || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Sample AI agent — instrumented with Argus SDK.
   # Compose-mode correlation (SPEC_03 T2): run in the host PID namespace so the
   # SDK's os.getpid() reports the *host* PID that Tetragon captures — exact-match

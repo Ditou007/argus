@@ -16,6 +16,11 @@ interface ServerOptions {
 }
 
 const MAX_MESSAGE_LEN = 4000;
+// Only the demo dashboard origin may drive the agent. Because /chat is a JSON
+// POST it triggers a CORS preflight, so a narrow allow-origin actually blocks
+// other websites from invoking the agent's tools (not just from reading the
+// reply). Override for a different dashboard origin via AGENT_CORS_ORIGIN.
+const CORS_ORIGIN = process.env.AGENT_CORS_ORIGIN ?? "http://localhost:3000";
 
 const isValidMessage = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0 && value.length <= MAX_MESSAGE_LEN;
@@ -30,6 +35,16 @@ export const createApp = (options: ServerOptions): Express => {
   const { deps, log } = options;
   const app = express();
   app.use(express.json());
+
+  // Scoped CORS so only the demo dashboard origin can chat (see CORS_ORIGIN).
+  app.use((_req, res, next) => {
+    res.header("Access-Control-Allow-Origin", CORS_ORIGIN);
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    next();
+  });
+  app.options("/chat", (_req, res) => res.sendStatus(204));
 
   app.get("/health", (_req, res) => {
     res.json({ status: "healthy", service: "argus-agent" });

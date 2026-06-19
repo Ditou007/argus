@@ -5,7 +5,7 @@ a **chatbot agent backend** (new, tool-using, weakly-guarded, SDK-instrumented) 
 (`packages/dashboard` — chat + live Argus view) · `packages/api/src/ws/**` + `routes/unexplained`
 (live stream + triage, existing) · `README.md` (one-command quick-start).
 **Last updated:** 2026-06-19
-**Status:** 🟢 Building — Slices 1–4 done. Full stack up via `docker compose up`; compose-mode
+**Status:** 🟢 Building — Slices 1–5 done (Slice 6 README/fresh-clone next). Full stack up via `docker compose up`; compose-mode
 Tetragon capture proven; compose correlation via `pid: host`; **attackable tool-using chatbot
 (`packages/agent`)** wired in (LLM loop + `run_shell`/`read_file`/`http_get`, weak guardrail,
 Argus-instrumented, chat HTTP/WS) — live attack-and-catch verified; **legible renderer
@@ -122,9 +122,18 @@ README, reach the live "caught it" state; record and fix every gap.
   inert. Note: blatant "steal my key" prompts are refused by aligned models — the demo drives
   undeclared actions via plausible tool requests, which is the honest mechanism (the gap is the
   agent's, not the model's intent).
-- [ ] **T4 — the gap is visible live.** Sending a malicious prompt shows the agent's reply on top and
+- [x] **T4 — the gap is visible live.** Sending a malicious prompt shows the agent's reply on top and
   the corresponding HIGH-risk unexplained event(s) appearing in the live view below within the
   session. *(check: live run — the unexplained event for the injected action renders below.)*
+  **Done 2026-06-19:** `packages/dashboard` `/demo` page — `ChatPanel` (top; tool runs tagged
+  declared/UNDECLARED) + `ArgusDetection` (live, polls the triage every 2s, renders the
+  `@argus/render` `DemoView` with HIGH highlighted) side by side. Verified live against the Groq
+  agent: the malicious prompt shows the reply + `[UNDECLARED]` tags, and `[HIGH] Read credential file
+  /root/.ssh/id_rsa` surfaces below within ~2s. **Agent CORS is scoped to the dashboard origin**
+  (`AGENT_CORS_ORIGIN`, default `http://localhost:3000`), not `*` — since `/chat` is a JSON POST it
+  preflights, so a narrow allow-origin blocks other websites from driving the tool-executing agent.
+  Data layer is fail-safe (HTTP error OR transport reject → null/throw, never a fabricated all-clear).
+  11 component/data-layer tests (vitest + jsdom). Wired into compose as the `dashboard` service (3000).
 - [x] **T5 — the view is legible and tested.** The formatter renders coverage % + risk-ranked
   unexplained in plain language; HIGH `~/.ssh` read ranks above a LOW `/tmp` write; zero-unexplained
   renders "100% coverage". *(tests: pure-formatter unit tests.)* **Done 2026-06-19:** pure
@@ -181,10 +190,12 @@ agent is sandboxed and benign by construction (inert exfil target).
   cleanly surfaces the attack. The renderer **leads with the verdict + high-risk count** and does NOT
   headline the raw `coverage_ratio` (which still counts low-risk noise) — it would mislead next to a
   clean verdict. `coveragePct` stays in the view model for the clean-state "100% coverage" message.
-- [ ] **Slice 5 — Chat + live Argus frontend** *(T4)* · **Delivers:** one page — chat on top, live
-  unexplained feed below over the existing WS stream · **Acceptance:** malicious prompt shows the
-  reply AND the HIGH-risk unexplained event appears live below · **DoD:** live run verifies ·
-  `keel eval` green · **Depends on:** 3, 4
+- [x] **Slice 5 — Chat + live Argus frontend** *(T4)* · **Delivers:** one page — chat + live
+  unexplained feed (side by side) over the triage + WS stream · **Acceptance:** malicious prompt shows
+  the reply AND the HIGH-risk unexplained event appears live · **DoD:** live run verifies ·
+  `keel eval` green · **Depends on:** 3, 4 · **Done 2026-06-19:** `/demo` page (`ChatPanel` +
+  `ArgusDetection`, `@argus/render`-driven), agent CORS, 11 tests, `dashboard` compose service
+  (port 3000). Verified live against the Groq agent.
 - [ ] **Slice 6 — One-command README + fresh-clone validation** *(T6)* · **Delivers:** quick-start
   (Docker + LLM key → `docker compose up` → attack → watch) + fresh-clone walkthrough · **Acceptance:**
   a clean clone following only the README reaches the caught-it state; gaps→fixes logged; verified
