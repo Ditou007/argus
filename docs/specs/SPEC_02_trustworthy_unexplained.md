@@ -321,9 +321,13 @@ isolated/production deployments). That slice exported `buildCandidateQuery` from
 isn't buried by it: (a) **runtime/dependency noise for BOTH instrumented runtimes** via a new
 depth-independent `lowSensitivityPathGlobs` — Node (`**/node_modules/**`) AND Python
 (`**/site-packages/**`, `**/dist-packages/**`, `**/__pycache__/**`, `**/*.pyc`, `/usr/lib/python*/**`)
-plus `/etc/resolv.conf`. This file de-noise ships in the **default** profile (it's noise for any
-node/python deployment; a credential read still scores HIGH because the credential glob is checked
-first). (b) The **network** de-noise is **demo-scoped, not default**: a new `DEMO_SENSITIVITY_PROFILE`
+plus `/etc/resolv.conf`, and (extended in S4) universal runtime noise any process emits — shared
+libraries (`**/*.so`, `**/*.so.*`), sysfs (`/sys/`), benign per-process introspection
+(`/proc/*/auxv|cgroup|status|stat|maps|limits|cmdline`, `/proc/{cpuinfo,meminfo,stat}`), and TLS
+config (`/etc/ssl/openssl.cnf`, `/etc/ssl/certs/`). This file de-noise ships in the **default**
+profile (it's noise for any node/python deployment; a credential read still scores HIGH because the
+credential glob is checked first — and `/proc/*/environ`, `/proc/*/mem`, and TLS *keys* are
+deliberately NOT lowered, so secrets stay HIGH). (b) The **network** de-noise is **demo-scoped, not default**: a new `DEMO_SENSITIVITY_PROFILE`
 (opted into via `ARGUS_SENSITIVITY_PROFILE=demo`, set only on the compose `api`) treats RFC1918
 private ranges as expected/LOW for the single-host service mesh (agent→API). The **shipped default
 stays conservative** — only loopback is LOW; private egress (lateral movement) and **link-local

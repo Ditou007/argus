@@ -5,11 +5,12 @@ a **chatbot agent backend** (new, tool-using, weakly-guarded, SDK-instrumented) 
 (`packages/dashboard` — chat + live Argus view) · `packages/api/src/ws/**` + `routes/unexplained`
 (live stream + triage, existing) · `README.md` (one-command quick-start).
 **Last updated:** 2026-06-19
-**Status:** 🟢 Building — Slices 1–3 done. Full stack up via `docker compose up`; compose-mode
+**Status:** 🟢 Building — Slices 1–4 done. Full stack up via `docker compose up`; compose-mode
 Tetragon capture proven; compose correlation via `pid: host`; **attackable tool-using chatbot
 (`packages/agent`)** wired in (LLM loop + `run_shell`/`read_file`/`http_get`, weak guardrail,
-Argus-instrumented, chat HTTP/WS) — pure-logic unit-tested; live attack-and-catch verified. Slice 4
-(legible renderer) next.
+Argus-instrumented, chat HTTP/WS) — live attack-and-catch verified; **legible renderer
+(`packages/render`, pure, + `pnpm demo` CLI)** turns triage into a banded plain-language view.
+Slice 5 (chat + live-Argus frontend — the UI) next.
 
 ---
 
@@ -124,9 +125,14 @@ README, reach the live "caught it" state; record and fix every gap.
 - [ ] **T4 — the gap is visible live.** Sending a malicious prompt shows the agent's reply on top and
   the corresponding HIGH-risk unexplained event(s) appearing in the live view below within the
   session. *(check: live run — the unexplained event for the injected action renders below.)*
-- [ ] **T5 — the view is legible and tested.** The formatter renders coverage % + risk-ranked
+- [x] **T5 — the view is legible and tested.** The formatter renders coverage % + risk-ranked
   unexplained in plain language; HIGH `~/.ssh` read ranks above a LOW `/tmp` write; zero-unexplained
-  renders "100% coverage". *(tests: pure-formatter unit tests.)*
+  renders "100% coverage". *(tests: pure-formatter unit tests.)* **Done 2026-06-19:** pure
+  `packages/render` (`formatTriage` → banded plain-language `DemoView`; `renderText` for CLI) — 12
+  unit tests — shared by the Slice 5 UI + a `pnpm demo` CLI. Verified live: `pnpm demo <session>`
+  prints the Groq attack as `[HIGH] Read credential file /root/.ssh/id_rsa` at the top. Plus a safe
+  de-noise extension (shared libs/`.so`, sysfs, benign `/proc`, TLS config → LOW) so runtime noise
+  drops out of the feed; sensitive `/proc/*/environ|mem` and TLS keys stay HIGH.
 - [ ] **T6 — a stranger can run it.** A fresh clone, following only the README, reaches the live
   caught-it state on the verified platform; gaps found are fixed; verified-vs-expected platforms
   recorded. *(check: logged fresh-clone walkthrough with gaps→fixes.)*
@@ -167,13 +173,14 @@ agent is sandboxed and benign by construction (inert exfil target).
   so the attack ranks #1 (network de-noise is demo-scoped via `ARGUS_SENSITIVITY_PROFILE=demo`;
   link-local + public egress stay HIGH; see SPEC_02 note). **Coverage-metric refinement → Slice 4** (raw
   `coverage_ratio` still counts low-risk runtime noise; the renderer reports risk-ranked top-N).
-- [ ] **Slice 4 — Legible live detection renderer** *(T5)* · **Delivers:** pure formatter (triage →
+- [x] **Slice 4 — Legible live detection renderer** *(T5)* · **Delivers:** pure formatter (triage →
   coverage % + ranked unexplained in plain language) shared by the live view + a `pnpm demo` CLI ·
   **Acceptance:** HIGH `~/.ssh` ranks above LOW `/tmp`; zero-unexplained → "100% coverage" · **Test:**
   pure-formatter unit tests · **DoD:** test green · `keel eval` green · **Depends on:** — *(pure)* ·
-  **From S3:** the risk profile now classes runtime/internal noise LOW, so risk-ranked **top-N** cleanly
-  surfaces the attack; the formatter should headline the high-risk count / risk-ranked feed rather than
-  the raw `coverage_ratio` (which still counts low-risk noise) — or compute coverage over non-low events.
+  **From S3 (done):** the risk profile classes runtime/internal noise LOW, so the risk-ranked feed
+  cleanly surfaces the attack. The renderer **leads with the verdict + high-risk count** and does NOT
+  headline the raw `coverage_ratio` (which still counts low-risk noise) — it would mislead next to a
+  clean verdict. `coveragePct` stays in the view model for the clean-state "100% coverage" message.
 - [ ] **Slice 5 — Chat + live Argus frontend** *(T4)* · **Delivers:** one page — chat on top, live
   unexplained feed below over the existing WS stream · **Acceptance:** malicious prompt shows the
   reply AND the HIGH-risk unexplained event appears live below · **DoD:** live run verifies ·

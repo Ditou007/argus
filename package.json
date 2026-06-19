@@ -10,6 +10,7 @@
     "dev:dashboard": "pnpm --filter @argus/dashboard dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
+    "demo": "pnpm --filter @argus/render demo",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "k8s:setup": "bash k8s/setup.sh",
