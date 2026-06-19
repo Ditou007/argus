@@ -4,6 +4,10 @@
   "private": true,
   "description": "Pure formatter: Argus triage JSON -> legible, risk-ranked view (shared by the demo UI + CLI)",
   "type": "module",
+  "main": "./src/format.ts",
+  "exports": {
+    ".": "./src/format.ts"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
