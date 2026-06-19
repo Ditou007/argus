@@ -67,6 +67,26 @@ describe("risk scoring", () => {
       expect(tier(fileEvent("/app/packages/agent/dist/index.js"))).toBe("medium");
     });
 
+    it("classes universal runtime noise (shared libs, sysfs, benign /proc, TLS config) as LOW", () => {
+      expect(tier(fileEvent("/usr/lib/libstdc++.so.6.0.34"))).toBe("low");
+      expect(tier(fileEvent("/lib/x86_64-linux-gnu/libc.so.6"))).toBe("low");
+      expect(tier(fileEvent("/sys/fs/cgroup/memory.max"))).toBe("low");
+      expect(tier(fileEvent("/proc/cpuinfo"))).toBe("low");
+      expect(tier(fileEvent("/proc/390484/auxv"))).toBe("low");
+      expect(tier(fileEvent("/etc/ssl/openssl.cnf"))).toBe("low");
+    });
+
+    it("does NOT lower sensitive /proc (incl. self) or TLS private keys (no over-de-noising)", () => {
+      // process environment/memory can hold secrets — must not be hidden as runtime noise,
+      // for ANY pid including self.
+      expect(tier(fileEvent("/proc/390484/environ"))).not.toBe("low");
+      expect(tier(fileEvent("/proc/390484/mem"))).not.toBe("low");
+      expect(tier(fileEvent("/proc/self/environ"))).not.toBe("low");
+      expect(tier(fileEvent("/proc/self/mem"))).not.toBe("low");
+      // a private key under /etc/ssl still wins via the credential glob.
+      expect(tier(fileEvent("/etc/ssl/private/server.key"))).toBe("high");
+    });
+
     it("classes a connect to a non-allowlisted dest HIGH, allowlisted LOW", () => {
       expect(tier(netEvent("203.0.113.9"))).toBe("high");
       expect(tier(netEvent("203.0.113.9"), ["203.0.113.9"])).toBe("low");

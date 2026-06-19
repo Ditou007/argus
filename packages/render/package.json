@@ -1,0 +1,19 @@
+{
+  "name": "@argus/render",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure formatter: Argus triage JSON -> legible, risk-ranked view (shared by the demo UI + CLI)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "demo": "tsx src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

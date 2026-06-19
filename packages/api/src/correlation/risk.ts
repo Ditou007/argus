@@ -61,10 +61,17 @@ export const DEFAULT_SENSITIVITY_PROFILE: SensitivityProfile = {
     "**/.netrc",
     "**/.git-credentials",
   ],
-  lowSensitivityPathPrefixes: ["/tmp/", "/var/tmp/", "/proc/self/", "/etc/resolv.conf"],
-  // Runtime/dependency noise for BOTH instrumented runtimes — a node or python
-  // agent reads hundreds of these at load; they are not "agent behaviour" and
-  // must not rank with a genuine credential read.
+  lowSensitivityPathPrefixes: [
+    "/tmp/",
+    "/var/tmp/",
+    "/etc/resolv.conf",
+    "/sys/", // sysfs / cgroup introspection
+    "/etc/ssl/openssl.cnf", // TLS config (NOT keys — those match the credential glob first)
+    "/etc/ssl/certs/", // public CA bundle
+  ],
+  // Runtime/dependency noise common to ANY process and to BOTH instrumented
+  // runtimes — a node or python agent reads hundreds of these at load; they are
+  // not "agent behaviour" and must not rank with a genuine credential read.
   lowSensitivityPathGlobs: [
     "**/node_modules/**", // Node deps
     "**/site-packages/**", // Python deps (venv / system)
@@ -73,6 +80,22 @@ export const DEFAULT_SENSITIVITY_PROFILE: SensitivityProfile = {
     "**/*.pyc", // Python bytecode
     "/usr/lib/python*/**", // Python stdlib
     "/usr/local/lib/python*/**",
+    "**/*.so", // shared libraries (native deps, both runtimes)
+    "**/*.so.*",
+    // System info files (anchored exact match, so e.g. /proc/cpuinfo only).
+    "/proc/cpuinfo",
+    "/proc/meminfo",
+    "/proc/stat",
+    "/proc/loadavg",
+    // Benign per-process introspection (any pid incl. self) — NOT environ/mem,
+    // which can hold secrets and so deliberately fall through to default tier.
+    "/proc/*/auxv",
+    "/proc/*/cgroup",
+    "/proc/*/status",
+    "/proc/*/stat",
+    "/proc/*/maps",
+    "/proc/*/limits",
+    "/proc/*/cmdline",
   ],
   egressAllowlist: [],
   // Conservative: only loopback is benign-by-destination. Internal egress and
