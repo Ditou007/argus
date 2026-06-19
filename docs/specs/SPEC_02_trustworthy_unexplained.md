@@ -309,6 +309,13 @@ events carry host PIDs, so the exact-PID path never fires.
   (3) it touches the SPEC_01 scoring engine + the committed eval baseline. Net: not worth its cost
   against the goal right now.
 
+**Cross-spec note (2026-06-19, SPEC_03 Slice 2):** the live demo *sidesteps* D15 in compose by
+running the agent with `pid: host`, so the SDK's `os.getpid()` is the host PID Tetragon captures and
+exact-match identity fires without the runtime-coupled resolution above (D15 remains unsolved for
+isolated/production deployments). That slice exported `buildCandidateQuery` from
+`packages/api/src/correlation/correlator.ts` purely to unit-test compose-mode candidate selection
+(PID-keyed when there is no pod) — **no scoring or behavior change** to this spec's engine or baseline.
+
 ---
 
 ## Non-goals (explicit)

@@ -1,0 +1,61 @@
+{
+  "name": "spec03_compose_pidhost",
+  "description": "SPEC_03 Slice 2 / T2: a compose-mode capture (no pod metadata, agent at pid:host). The agent's llm_call true syscalls are a tcp_connect + tcp_sendmsg to the resolved LLM IP from the agent's host PID; an identical tcp_connect from a DIFFERENT host process is the discriminator. With pod_name null, host-PID exact-match is the decisive signal — the agent's own syscalls reach HIGH while the cross-process one does not.",
+  "action": {
+    "action_type": "llm_call",
+    "action_name": "groq.chat",
+    "input_summary": "POST https://api.groq.com/openai/v1/chat/completions",
+    "started_at": "2026-06-19T00:00:00.000Z",
+    "ended_at": "2026-06-19T00:00:00.500Z",
+    "agent_pid": 48217,
+    "pod_name": null,
+    "expected_ips": ["104.20.23.154"]
+  },
+  "events": [
+    {
+      "id": 1,
+      "event_type": "process_kprobe",
+      "process_pid": 48217,
+      "process_binary": "/usr/local/bin/python",
+      "function_name": "tcp_connect",
+      "event_time": "2026-06-19T00:00:00.100Z",
+      "raw_event": {
+        "process_kprobe": {
+          "process": { "pid": 48217 },
+          "args": [{ "sockArg": { "daddr": "104.20.23.154", "dport": 443 } }]
+        }
+      },
+      "true_match": true
+    },
+    {
+      "id": 2,
+      "event_type": "process_kprobe",
+      "process_pid": 48217,
+      "process_binary": "/usr/local/bin/python",
+      "function_name": "tcp_sendmsg",
+      "event_time": "2026-06-19T00:00:00.150Z",
+      "raw_event": {
+        "process_kprobe": {
+          "process": { "pid": 48217 },
+          "args": [{ "sockArg": { "daddr": "104.20.23.154", "dport": 443 } }]
+        }
+      },
+      "true_match": true
+    },
+    {
+      "id": 3,
+      "event_type": "process_kprobe",
+      "process_pid": 59001,
+      "process_binary": "/usr/local/bin/python",
+      "function_name": "tcp_connect",
+      "event_time": "2026-06-19T00:00:00.120Z",
+      "raw_event": {
+        "process_kprobe": {
+          "process": { "pid": 59001 },
+          "args": [{ "sockArg": { "daddr": "104.20.23.154", "dport": 443 } }]
+        }
+      },
+      "true_match": false
+    }
+  ]
+}
