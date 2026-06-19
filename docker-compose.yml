@@ -95,13 +95,21 @@ services:
       timeout: 5s
       retries: 5
 
-  # Sample AI agent — instrumented with Argus SDK
+  # Sample AI agent — instrumented with Argus SDK.
+  # Compose-mode correlation (SPEC_03 T2): run in the host PID namespace so the
+  # SDK's os.getpid() reports the *host* PID that Tetragon captures — exact-match
+  # correlation then works without the container-PID gap (D15). With no k8s pod
+  # metadata in compose, ARGUS_POD_NAME is blanked so the correlator keys on the
+  # host PID (it would otherwise inherit the container id via HOSTNAME and key on
+  # a pod_name that no compose-mode event carries).
   sample-agent:
     build:
       context: .
       dockerfile: sample-agent/Dockerfile
+    pid: host
     environment:
       ARGUS_API_URL: http://host.docker.internal:3001
+      ARGUS_POD_NAME: ""
     depends_on:
       postgres:
         condition: service_healthy

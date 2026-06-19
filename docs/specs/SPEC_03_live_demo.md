@@ -4,9 +4,11 @@
 a **chatbot agent backend** (new, tool-using, weakly-guarded, SDK-instrumented) · the **frontend**
 (`packages/dashboard` — chat + live Argus view) · `packages/api/src/ws/**` + `routes/unexplained`
 (live stream + triage, existing) · `README.md` (one-command quick-start).
-**Last updated:** 2026-06-18
-**Status:** 🟢 Building — Slice 1 done (full stack up via `docker compose up`; compose-mode Tetragon
-capture proven end-to-end into `events` and served by the API, no kind fallback). Slice 2 next.
+**Last updated:** 2026-06-19
+**Status:** 🟢 Building — Slices 1–2 done (full stack up via `docker compose up`; compose-mode
+Tetragon capture proven into `events` and served by the API; compose correlation via `pid: host` on
+the `sample-agent` — its host-PID syscalls attribute at HIGH). Slice 3 (attackable chatbot agent,
+which must inherit the same `pid: host` + blank-pod wiring) next.
 
 ---
 
@@ -95,9 +97,17 @@ README, reach the live "caught it" state; record and fix every gap.
   brings postgres/redis/api healthy + tetragon/ingestion running (ingestion has no probe, matching
   k8s); a python agent container's `fd_install` on a marker path was captured by compose Tetragon,
   ingested into `events`, and served via `GET /api/events`. **No kind fallback needed.**
-- [ ] **T2 — correlation works in compose.** With the agent at `pid: host`, a declared action
+- [x] **T2 — correlation works in compose.** With the agent at `pid: host`, a declared action
   attributes its syscalls at ≥ the committed threshold in a compose capture. *(test: a compose
-  capture fixture through the engine shows the action's events correlated.)*
+  capture fixture through the engine shows the action's events correlated.)* **Done 2026-06-19:**
+  `sample-agent` runs `pid: host` with `ARGUS_POD_NAME=""` so (a) the correlator's **candidate query**
+  keys on the agent's host PID — a foreign-process syscall is never a candidate (pinned by
+  `candidate-query.test.ts`) — and (b) exact host-PID match is the decisive **scoring** signal:
+  fixture `spec03_compose_pidhost.json` through the engine scores the agent's host-PID
+  tcp_connect/tcp_sendmsg at 0.91/0.95 (HIGH), vs 0.61 for the same syscall lacking the PID match.
+  **Live re-capture verified:** a `--pid=host` python container reported `os.getpid()=290255` and
+  Tetragon captured its tcp_connect/fd_install into `events` under `process_pid=290255` (the exact
+  host PID) — confirming the SDK-reported PID equals the captured PID under `pid: host`.
 - [ ] **T3 — the agent is genuinely attackable.** A benign prompt yields only declared actions; a
   malicious prompt yields **undeclared** syscalls (credential read and/or exfil connect) that Argus
   classifies unexplained. *(check: scripted benign vs malicious prompt; the malicious run surfaces
@@ -130,15 +140,21 @@ agent is sandboxed and benign by construction (inert exfil target).
   (Tetragon file mode, reads `./data/tetragon/tetragon.log`) + `api` (port 3001, `/api/health`
   healthcheck) compose services; full stack up; python-container `fd_install` captured → `events`
   → API. No kind fallback.
-- [ ] **Slice 2 — Compose-mode correlation (pid:host)** *(T2)* · **Delivers:** declared actions
+- [x] **Slice 2 — Compose-mode correlation (pid:host)** *(T2)* · **Delivers:** declared actions
   correlate to syscalls in compose · **Acceptance:** a compose capture shows an action's syscalls
   attributed ≥ the committed threshold · **DoD:** re-capture verifies · `keel eval` green ·
-  **Depends on:** 1
+  **Depends on:** 1 · **Done 2026-06-19:** `sample-agent` set to `pid: host` + blank `ARGUS_POD_NAME`;
+  deployment-mode fix only (no scoring change). Candidate query keys on host PID (`candidate-query.test.ts`)
+  + fixture `spec03_compose_pidhost.json` scores host-PID syscalls 0.91/0.95 (HIGH) vs 0.61 without
+  the PID match; live re-capture confirmed (host PID captured into `events`). **Forward note:** Slice 3's
+  chatbot service MUST inherit `pid: host` + blank `ARGUS_POD_NAME` or compose correlation regresses to the D15 gap.
 - [ ] **Slice 3 — Attackable tool-using agent backend** *(T3)* · **Delivers:** LLM loop +
   `run_shell`/`read_file`/`http_get` tools, weak guardrails, SDK-instrumented, chat endpoint ·
   **Acceptance:** benign prompt → only declared actions; malicious prompt → undeclared syscalls Argus
   flags unexplained · **DoD:** scripted benign/malicious runs + pure-logic unit tests · `keel eval`
-  green · **Depends on:** 1, 2
+  green · **Depends on:** 1, 2 · **Inherits from S2:** the chatbot's compose service MUST set
+  `pid: host` + `ARGUS_POD_NAME: ""` (same as `sample-agent`) so its declared actions correlate to
+  host-PID syscalls; without it, compose correlation regresses to the D15 container-PID gap.
 - [ ] **Slice 4 — Legible live detection renderer** *(T5)* · **Delivers:** pure formatter (triage →
   coverage % + ranked unexplained in plain language) shared by the live view + a `pnpm demo` CLI ·
   **Acceptance:** HIGH `~/.ssh` ranks above LOW `/tmp`; zero-unexplained → "100% coverage" · **Test:**

@@ -11,7 +11,7 @@ const dnsCache = createDnsCache();
 const CANDIDATE_COLUMNS = `id, event_type, process_pid, process_binary, function_name,
                 event_time, created_at, raw_event`;
 
-interface CandidateAction {
+export interface CandidateAction {
   readonly pod_name: string | null;
   readonly agent_pid: number;
   readonly started_at: string;
@@ -21,8 +21,15 @@ interface CandidateAction {
 /**
  * Build the candidate-event query: by pod when the action has one, else by PID.
  * Both widen the action window by ±1s to tolerate ingestion/clock skew.
+ *
+ * The PID branch is the compose-mode (pid:host) discriminator: with no pod
+ * metadata, only events from the agent's own host PID are candidates — a syscall
+ * from a different host process is excluded here, before scoring.
+ * @function buildCandidateQuery
+ * @param action - The declared action's pod/PID identity and time window.
+ * @returns Parameterized SQL text and its bound values.
  */
-const buildCandidateQuery = (action: CandidateAction): { text: string; values: unknown[] } => {
+export const buildCandidateQuery = (action: CandidateAction): { text: string; values: unknown[] } => {
   const filter = action.pod_name ? "pod_name = $1" : "process_pid = $1";
   const key = action.pod_name ?? action.agent_pid;
   const text = `SELECT ${CANDIDATE_COLUMNS}
