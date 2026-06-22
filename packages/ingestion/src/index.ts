@@ -3,11 +3,14 @@ import { createGrpcWatcher } from "./tetragon-grpc-watcher.js";
 import { createEventStore } from "./event-store.js";
 import { createClickHouseStore } from "./clickhouse-store.js";
 import { createClickHouseClient } from "./clickhouse-client.js";
+import { createIngestHandler } from "./ingest-handler.js";
 import { shouldIngest } from "./event-filter.js";
 import { config } from "./config.js";
 
 let ingested = 0;
 let filtered = 0;
+
+const describeError = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 const main = async () => {
   console.log(`Argus Ingestion Service starting (mode: ${config.tetragon.mode})...`);
@@ -16,17 +19,27 @@ const main = async () => {
   await store.initialize();
 
   // SPEC_04 Slice 1: dual-write the raw firehose to ClickHouse alongside
-  // Postgres. ClickHouse is additive here — a ClickHouse failure must never
-  // break the existing Postgres ingestion path.
+  // Postgres. ClickHouse is additive here — a ClickHouse fault (at boot OR
+  // per-event) must never break the existing Postgres ingestion path. The DDL
+  // init is best-effort; the store re-runs it lazily so dual-write self-heals
+  // if ClickHouse was unreachable at startup.
   const clickhouse = createClickHouseStore(createClickHouseClient(config.clickhouse));
-  await clickhouse.initialize();
+  await clickhouse.initialize().catch((err: unknown) => {
+    console.error("ClickHouse init failed (continuing without ClickHouse):", describeError(err));
+  });
+
+  const handle = createIngestHandler({
+    primary: store,
+    mirror: clickhouse,
+    shouldIngest,
+    onMirrorError: (err) => {
+      console.error("ClickHouse insert failed:", describeError(err));
+    },
+  });
 
   const onEvent = async (event: Parameters<typeof shouldIngest>[0]) => {
-    if (shouldIngest(event)) {
-      await store.insert(event);
-      await clickhouse.insert(event).catch((err: unknown) => {
-        console.error("ClickHouse insert failed:", err instanceof Error ? err.message : String(err));
-      });
+    const { ingested: wasIngested } = await handle(event);
+    if (wasIngested) {
       ingested++;
     } else {
       filtered++;
@@ -62,7 +75,9 @@ const main = async () => {
     console.log("Shutting down ingestion...");
     watcher.stop();
     await store.close();
-    await clickhouse.close();
+    await clickhouse.close().catch((err: unknown) => {
+      console.error("ClickHouse close failed:", describeError(err));
+    });
     process.exit(0);
   };
 

@@ -73,6 +73,13 @@ describe("createClickHouseStore", () => {
     expect(commands.some((q) => q.includes(`CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE}`))).toBe(true);
   });
 
+  it("insert lazily runs the DDL when the store was never initialized (self-heal)", async () => {
+    const { client, commands } = makeFakeClient();
+    // No initialize() call — simulates ClickHouse being unreachable at boot.
+    await createClickHouseStore(client).insert(kprobe("read"));
+    expect(commands.some((q) => q.includes(`CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE}`))).toBe(true);
+  });
+
   it("insert lands a raw event that a query reads back (> 0 rows)", async () => {
     const { client } = makeFakeClient();
     const store = createClickHouseStore(client);

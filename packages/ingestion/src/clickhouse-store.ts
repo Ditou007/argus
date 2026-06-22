@@ -79,11 +79,20 @@ export const toEventRow = (event: TetragonEvent): EventRow => {
  * @returns the store API: initialize (DDL), insert (one raw event), close
  */
 export const createClickHouseStore = (client: ClickHouseClient) => {
+  // Tracks whether the table DDL has run. If ClickHouse is unreachable at boot
+  // (initialize fails, swallowed by the caller), the next insert re-runs the
+  // idempotent CREATE TABLE IF NOT EXISTS so dual-write self-heals on recovery.
+  let initialized = false;
+
   const initialize = async (): Promise<void> => {
     await client.command({ query: EVENTS_DDL });
+    initialized = true;
   };
 
   const insert = async (event: TetragonEvent): Promise<void> => {
+    if (!initialized) {
+      await initialize();
+    }
     await client.insert({ table: EVENTS_TABLE, values: [toEventRow(event)] });
   };
 
