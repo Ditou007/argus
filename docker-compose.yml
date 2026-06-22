@@ -27,6 +27,31 @@ services:
       timeout: 5s
       retries: 5
 
+  # ClickHouse — columnar store for the raw syscall firehose + correlated
+  # traces (SPEC_04). Postgres keeps only findings; ClickHouse holds the
+  # high-volume, time-bounded forensic record.
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: argus
+      CLICKHOUSE_USER: argus
+      CLICKHOUSE_PASSWORD: argus_dev
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - chdata:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # Tetragon — eBPF-based runtime security observability
   # Runs privileged to access the kernel's eBPF subsystem
   tetragon:
@@ -56,6 +81,11 @@ services:
       DB_USER: argus
       DB_PASSWORD: argus_dev
       REDIS_HOST: redis
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_DB: argus
+      CLICKHOUSE_USER: argus
+      CLICKHOUSE_PASSWORD: argus_dev
       TETRAGON_MODE: file
       TETRAGON_EXPORT_PATH: /var/run/tetragon/tetragon.log
     volumes:
@@ -65,6 +95,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      clickhouse:
         condition: service_healthy
       tetragon:
         condition: service_started
@@ -167,3 +199,4 @@ services:
 
 volumes:
   pgdata:
+  chdata:

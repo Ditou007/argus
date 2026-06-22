@@ -1,6 +1,8 @@
 import { createWatcher } from "./tetragon-watcher.js";
 import { createGrpcWatcher } from "./tetragon-grpc-watcher.js";
 import { createEventStore } from "./event-store.js";
+import { createClickHouseStore } from "./clickhouse-store.js";
+import { createClickHouseClient } from "./clickhouse-client.js";
 import { shouldIngest } from "./event-filter.js";
 import { config } from "./config.js";
 
@@ -13,9 +15,18 @@ const main = async () => {
   const store = createEventStore(config.database, config.redis);
   await store.initialize();
 
+  // SPEC_04 Slice 1: dual-write the raw firehose to ClickHouse alongside
+  // Postgres. ClickHouse is additive here — a ClickHouse failure must never
+  // break the existing Postgres ingestion path.
+  const clickhouse = createClickHouseStore(createClickHouseClient(config.clickhouse));
+  await clickhouse.initialize();
+
   const onEvent = async (event: Parameters<typeof shouldIngest>[0]) => {
     if (shouldIngest(event)) {
       await store.insert(event);
+      await clickhouse.insert(event).catch((err: unknown) => {
+        console.error("ClickHouse insert failed:", err instanceof Error ? err.message : String(err));
+      });
       ingested++;
     } else {
       filtered++;
@@ -51,6 +62,7 @@ const main = async () => {
     console.log("Shutting down ingestion...");
     watcher.stop();
     await store.close();
+    await clickhouse.close();
     process.exit(0);
   };
 
