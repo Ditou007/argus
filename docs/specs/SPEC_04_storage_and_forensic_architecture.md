@@ -204,3 +204,9 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Depends on:* Slices 1–4.
 
 **Risks:** (1) Slice 2 PR-size — reuse scoring signals untouched; split if it overflows. (2) ClickHouse testability under the coverage gate — injectable client → fake for unit/patch-coverage, compose-gated integration. (3) Correlator restart → **rehydrate open windows from ClickHouse** (decided). (4) Two correlation paths during cutover (2→3) must produce identical scores — SPEC_01/02 baselines are the guardrail. (5) ClickHouse TTL/partition DDL — verify against official ClickHouse docs (source-driven), not memory.
+
+---
+
+## Change log
+
+- **2026-06-22 — ingestion reliability (finding #5).** The ingestion firehose-tail (`tetragon-watcher.ts`) was OOM-crashing the ingestion container (exit 139, ~87k events) and silently stopping the whole capture pipeline. Root cause: it re-read the **entire** growing export file into memory every 1s with **no reentrancy guard**, so overlapping passes (each holding a full-file string + the per-event awaited PG+CH writes) piled up until the V8 heap exhausted; it also reprocessed from byte 0 on restart, duplicating rows. Fixed by a bounded tail reader: in-flight guard, incremental new-bytes-only reads from a byte offset, rotation/truncation reset, sequential backpressured processing, and start-from-end on restart (history already lives in ClickHouse/Postgres). Regression tests encode the contract so the bug fails the suite, not just at runtime. Rode in with the `event-store.ts`/`stream-publisher.ts` `xadd` build-fix (unblocks the ingestion image `tsc` build). No change to the storage architecture or correlation behavior.
