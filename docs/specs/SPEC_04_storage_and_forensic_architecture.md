@@ -153,20 +153,26 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Test:* window manager unit tests (scope/pid+pod + time matching, accumulate→close→trace, the no-race fast-op case); `toTraceRow` pure-mapping test.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 1.
-- [ ] **Slice 2b — Durable-stream transport + consumer drives the engine + persist traces (T2a).** Transport per [ADR 0002](../adr/0002-redis-streams-correlation-transport.md).
-  - *Delivers:* ingestion `XADD`s the full event to a durable Redis Stream `argus:events:stream` (additive — the lightweight `argus:events` pub/sub for the dashboard/WS is unchanged); a streaming-correlator service in the API reads the stream via a **consumer group** and drives `ingestEvent`, opens/closes windows from the action lifecycle (`packages/api/src/routes/sessions.ts`), and **persists the explained trace (`toTraceRows`) to ClickHouse `correlated_traces`** on close. PG firehose + the on-demand path stay intact (cut in Slice 3).
-  - *Acceptance:* a live declared action + streamed full events → a trace row lands in `correlated_traces`; events are acked (at-least-once, no drops).
-  - *Test:* unit (stream-event → StreamEvent parse; consumer drives open/ingest/close; trace persisted via a fake CH client); compose-gated integration (real Redis Stream + real ClickHouse → trace row).
+- [x] **Slice 2b — Durable-stream plumbing: publisher + parser + trace-store (T2a).** Transport per [ADR 0002](../adr/0002-redis-streams-correlation-transport.md).
+  - *Delivers:* ingestion `XADD`s the full event to a durable Redis Stream `argus:events:stream` (additive — the lightweight `argus:events` pub/sub for the dashboard/WS is unchanged, MAXLEN-capped); a `parseStreamEvent` (stream payload → `StreamEvent`); an API-side trace-store (a minimal ClickHouse writer) that persists `toTraceRows(trace)` to `correlated_traces`.
+  - *Acceptance:* publish→stream→parse→engine→trace-store→ClickHouse produces a `correlated_traces` row end to end (the pieces wired by a test, not yet by the running API).
+  - *Test:* unit (publisher XADD payload; `parseStreamEvent` round-trips a published event; trace-store persists via a fake CH client); compose-gated integration (real Redis Stream `XADD`/`XREAD` + real ClickHouse → trace row).
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 2a.
-- [ ] **Slice 2c — Rehydrate-on-restart (T2a).**
+- [ ] **Slice 2c — Live wiring: consumer service + action-lifecycle hooks (T2a).**
+  - *Delivers:* a streaming-correlator service in the running API reads `argus:events:stream` via a **consumer group** (`XREADGROUP`, ack), driving `ingestEvent`; `openAction` on action-create and `closeAction` (parse hints + DNS, persist trace) on action-end are hooked into `packages/api/src/routes/sessions.ts`; started in `index.ts`. PG firehose + on-demand `correlateAction` stay intact (cut in Slice 3).
+  - *Acceptance:* a real declared action + streamed events through the running API → a trace row in `correlated_traces`; events acked (at-least-once, no drops).
+  - *Test:* unit (service drives open/ingest/close + persist with fakes; hint parsing); compose-gated integration through the API lifecycle.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 2b.
+- [ ] **Slice 2d — Rehydrate-on-restart (T2a).**
   - *Delivers:* on startup the correlator resumes without losing in-flight work: the consumer group redelivers unacked stream entries, **and** open windows are rebuilt from Postgres (`agent_actions WHERE ended_at IS NULL`) with their accumulated events from ClickHouse.
   - *Acceptance:* a restart mid-session resumes open windows and still produces the correct trace on action-close (no lost correlations).
   - *Test:* restart-rehydration test (open action + partial events → restart → close → full trace).
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
-  - *Depends on:* Slice 2b.
+  - *Depends on:* Slice 2c.
 - [ ] **Slice 3 — Findings → Postgres + cut Postgres off the firehose (T2b).**
-  - *Delivers:* streaming correlator writes only sessions/actions/correlations/unexplained findings to Postgres; ingestion's Postgres firehose write is **removed** (ClickHouse-only); the on-demand read path (`packages/api/src/routes/sessions.ts`) sources candidate events from ClickHouse.
+  - *Delivers:* streaming correlator writes only sessions/actions/correlations/unexplained findings to Postgres; ingestion's Postgres firehose write is **removed** (ClickHouse-only); the on-demand read path (`packages/api/src/routes/sessions.ts`) sources candidate events from ClickHouse. **Note:** the durable-stream event `id` is currently the Postgres serial (`event-store.ts`); removing the PG firehose write here means the stream `id` must be **re-sourced** (mint a stable id at ingestion).
   - *Acceptance:* during a capture, Postgres `events` gets **0 new rows** while ClickHouse `events` grows; findings still land in Postgres; on-demand correlation scores match the streaming path (SPEC_01/02 baselines unchanged).
   - *Test:* capture run → assert 0 new PG `events` rows + CH `events` growth + findings present.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.

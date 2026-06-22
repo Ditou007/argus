@@ -3,6 +3,7 @@ import { Redis } from "ioredis";
 import type { TetragonEvent } from "./types.js";
 import { createMigrationRunner } from "./migrations/runner.js";
 import { toEventFields } from "./event-fields.js";
+import { createStreamPublisher } from "./stream-publisher.js";
 
 interface DBConfig {
   host: string;
@@ -27,6 +28,8 @@ interface RedisConfig {
 export const createEventStore = (dbConfig: DBConfig, redisConfig: RedisConfig) => {
   const pool = new pg.Pool(dbConfig);
   const redis = new Redis(redisConfig);
+  // SPEC_04 Slice 2b: durable stream feeding the streaming correlator (ADR 0002).
+  const streamPublisher = createStreamPublisher(redis);
 
   redis.on("error", (err: Error) => {
     console.error("Redis pub error:", err.message);
@@ -70,6 +73,18 @@ export const createEventStore = (dbConfig: DBConfig, redisConfig: RedisConfig) =
         function_name: fields.function_name,
         event_time: fields.event_time,
       })).catch(() => {/* non-critical */});
+    }
+
+    // Publish the FULL event to the durable stream for the streaming correlator.
+    // For ALL ingested events (not just pod-scoped) — compose mode is pid-scoped.
+    // Additive: a stream failure must not break ingestion (PG is already committed).
+    // SPEC_04 Slice 3: `eventId` is the Postgres serial id; when the PG firehose
+    // write is cut, the stream event id must be re-sourced (mint at ingestion).
+    if (eventId) {
+      streamPublisher.publish(event, eventId).catch((err: unknown) => {
+        // Log (don't rethrow): a dropped stream publish is an audit gap worth a signal.
+        console.error("Stream publish failed:", err instanceof Error ? err.message : String(err));
+      });
     }
   };
 
