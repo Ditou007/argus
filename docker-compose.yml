@@ -122,6 +122,10 @@ services:
       # Single-host demo: opt into private-mesh de-noise (RFC1918 LOW). Link-local
       # and public egress stay HIGH; the shipped default profile stays conservative.
       ARGUS_SENSITIVITY_PROFILE: demo
+      # SPEC_04 Slice 2e: grace period before an ended action is finalized, so
+      # events lagged by the ingestion pipeline (~10s) are still attributed.
+      # Shorter here than the 60s code default to keep the demo responsive.
+      ARGUS_TRACE_SETTLE_MS: ${ARGUS_TRACE_SETTLE_MS:-30000}
     ports:
       - "3001:3001"
     depends_on:

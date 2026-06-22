@@ -1,0 +1,15 @@
+# Runtime data — Tetragon's export logs + the cgroup2 mount it creates here
+# (a `d---------` mount point that fails the build-context stat). Never belongs
+# in any image context.
+data/
+
+# Dependencies & build output — restored/produced inside the image.
+**/node_modules
+**/dist
+**/coverage
+
+# VCS & local tooling
+.git
+.github
+*.log
+.DS_Store
