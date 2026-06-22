@@ -6,9 +6,9 @@ export const EVENT_STREAM_KEY = "argus:events:stream";
 /** Cap the stream length — ClickHouse is the durable record, the stream is a transport buffer. */
 export const EVENT_STREAM_MAXLEN = 100_000;
 
-/** The minimal Redis surface the publisher drives (ioredis `xadd`). */
+/** The minimal Redis surface the publisher drives (ioredis `xadd`, or a `call`-based adapter). */
 export interface StreamRedis {
-  xadd: (...args: (string | number)[]) => Promise<string | null>;
+  xadd: (...args: (string | number)[]) => Promise<unknown>;
 }
 
 export interface StreamPublisher {
