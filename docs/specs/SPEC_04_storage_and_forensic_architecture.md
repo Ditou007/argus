@@ -109,6 +109,9 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
 - [ ] **[T2]** The streaming correlator attributes a declared action's syscalls and emits the
   undeclared gap as a finding **without an end-of-action batch query** — verified by the SPEC_03
   fast-op fixture that previously raced (it now correlates deterministically).
+- [ ] **[T2]** A **real** declared action (sub-second), whose syscalls reach the stream only after the
+  action ends (live pipeline lag ~10–60s), still produces a `correlated_traces` row — i.e. a live agent
+  run yields trace rows for its own sessions, not just synchronously-injected test data (Slice 2e).
 - [ ] **[T2]** Postgres holds only sessions/actions/correlations/findings; its row growth is
   proportional to findings, not the firehose — demonstrated against the ~1.4M-row baseline (Postgres
   total rows after a demo run are orders of magnitude below the captured syscall count).
@@ -172,6 +175,21 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Test:* unit — `rehydrateWindows(pool, service)` with a fake pool → each row re-opened with its scope + start, the query filters `ended_at IS NULL`, empty → 0.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 2c.
+- [ ] **Slice 2e — Settle/grace window so latent events are still attributed (T2 correctness fix).**
+  - *Why:* the live run (2026-06-22) showed **zero `correlated_traces` for real agent sessions**. Root cause: events only accumulate into a window while it is open (`openAction`→`closeAction`), but the real ingestion pipeline lags `event_time`→stream arrival by **~10s steady-state (avg 63s, max 374s during backlog)** while declared actions are **sub-second**. So every real window closes ~10–60s **before** its events stream in → empty window → `trace-store.persist` drops the empty trace → no row. (Slice 2a's "fast-op is accumulated when it streams in" assumption holds only when events arrive *before* close — true for synchronous test data, false for the live pipeline.)
+  - *Delivers:* on `closeAction`, the window is **not** discarded; it is marked closing (capturing `ended_at` + resolved hints) and finalized after a configurable **settle delay** (`ARGUS_TRACE_SETTLE_MS`, default > observed pipeline latency). `ingestEvent` keeps adding scope-matching events to closing windows; at settle the accumulated set is scored against the real `{started_at, ended_at}` window (unchanged scoring) and persisted. Timer/clock injected so the engine stays deterministically testable.
+  - *Acceptance:* an action whose matching events arrive **after** `ended_at` but **before** `ended_at + settle` is attributed and produces a `correlated_traces` row; scoring against the `{started_at, ended_at}` window is unchanged (SPEC_01/02 baselines hold); a window with no matching events still persists nothing.
+  - *Honest guarantee / scope note:* a restart **during** the settle period loses that not-yet-finalized trace (rehydrate only rebuilds `ended_at IS NULL` windows) — documented, acceptable for v1.
+  - *Test:* unit — fake clock: close → no persist before settle; matching event ingested post-close, pre-settle → attributed at settle; settle finalize persists once; restart-during-settle gap asserted.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 2c.
+- [ ] **Slice 2f — Descendant-PID attribution (T2 completeness).**
+  - *Why:* host-PID scope matches only the exact `agent_pid`, but the `run_shell` tool spawns **child processes** (`exec`) — the most security-relevant syscalls (shell-driven exfil/file reads) run under child PIDs and are currently unattributed. Tetragon's `raw_event` already carries `process.parent.pid`/`parent_exec_id`, but neither the CH `events` column set nor `StreamEvent` extracts it.
+  - *Delivers:* extract `parent_pid` (and exec id) through ingestion `event-fields` → CH `events` column → stream payload → `StreamEvent`; the correlator tracks a per-scope **descendant PID set** (seed = `agent_pid`; a `process_exec` whose `parent_pid` ∈ set adds its pid), and `matchesScope` matches the set (host-PID mode) — pod-scope mode unchanged.
+  - *Acceptance:* a shell child of the declared agent process has its syscalls attributed to the action; pod-scoped attribution is unchanged; scoring unchanged.
+  - *Test:* unit — process-tree seed + exec-driven membership; `matchesScope` matches a descendant pid; ingestion field extraction; parser round-trip.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 2e.
 - [ ] **Slice 3 — Findings → Postgres + cut Postgres off the firehose (T2b).**
   - *Delivers:* streaming correlator writes only sessions/actions/correlations/unexplained findings to Postgres; ingestion's Postgres firehose write is **removed** (ClickHouse-only); the on-demand read path (`packages/api/src/routes/sessions.ts`) sources candidate events from ClickHouse. **Note:** the durable-stream event `id` is currently the Postgres serial (`event-store.ts`); removing the PG firehose write here means the stream `id` must be **re-sourced** (mint a stable id at ingestion).
   - *Acceptance:* during a capture, Postgres `events` gets **0 new rows** while ClickHouse `events` grows; findings still land in Postgres; on-demand correlation scores match the streaming path (SPEC_01/02 baselines unchanged).
@@ -204,3 +222,9 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Depends on:* Slices 1–4.
 
 **Risks:** (1) Slice 2 PR-size — reuse scoring signals untouched; split if it overflows. (2) ClickHouse testability under the coverage gate — injectable client → fake for unit/patch-coverage, compose-gated integration. (3) Correlator restart → **rehydrate open windows from ClickHouse** (decided). (4) Two correlation paths during cutover (2→3) must produce identical scores — SPEC_01/02 baselines are the guardrail. (5) ClickHouse TTL/partition DDL — verify against official ClickHouse docs (source-driven), not memory.
+
+---
+
+## Change log
+
+- **2026-06-22 — live-run correction (adds Slices 2e, 2f).** The first real end-to-end run surfaced **finding #1: no `correlated_traces` for real agent sessions** (only synchronously-injected test data appeared). Root-caused to the streaming correlator's accumulate-only-while-open model vs. the live ingestion pipeline's ~10–60s `event_time`→stream latency: real sub-second action windows close before their events arrive, yielding empty traces that `trace-store.persist` drops. Fix split into **Slice 2e** (settle/grace window — finalize after a configurable delay so latent events are still attributed) and **Slice 2f** (descendant-PID attribution — `run_shell` children currently fall outside exact-`agent_pid` scope). Scoring is unchanged; SPEC_01/02 baselines remain the guardrail. Secondary observation (finding #4): `correlated_traces` holds only **explained** events — the undeclared-attack signal lives in the Postgres unexplained gap (working), so this fix improves forensic-replay completeness, not threat detection.

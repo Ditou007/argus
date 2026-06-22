@@ -23,4 +23,7 @@ export const config = {
     username: process.env.CLICKHOUSE_USER ?? "argus",
     password: process.env.CLICKHOUSE_PASSWORD ?? "argus_dev",
   },
+  // SPEC_04 Slice 2e: grace period before an ended action is finalized, so
+  // pipeline-lagged events (event_time→stream ~10–60s) are still attributed.
+  traceSettleMs: parseInt(process.env.ARGUS_TRACE_SETTLE_MS ?? "60000", 10),
 } as const;
