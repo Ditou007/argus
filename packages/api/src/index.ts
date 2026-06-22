@@ -12,6 +12,7 @@ import { createClickHouseWriter } from "./correlation/clickhouse-writer.js";
 import { createTraceStore } from "./correlation/trace-store.js";
 import { createStreamingService } from "./correlation/streaming-service.js";
 import { createStreamConsumer } from "./correlation/stream-consumer.js";
+import { rehydrateWindows } from "./correlation/rehydrate.js";
 import { config } from "./config.js";
 
 // Wire-protocol constants for the durable correlation stream (ADR 0002).
@@ -57,6 +58,10 @@ const streamConsumer = createStreamConsumer({
 });
 traceStore
   .initialize()
+  // SPEC_04 Slice 2d: rebuild open windows from Postgres before consuming, so an
+  // action open across a restart still attributes post-restart events.
+  .then(() => rehydrateWindows(pool, streaming))
+  .then((n) => n > 0 && console.log(`Rehydrated ${n} open correlation window(s)`))
   .then(() => streamConsumer.start())
   .catch((err: unknown) => console.error("Streaming correlator failed to start:", describeError(err)));
 
