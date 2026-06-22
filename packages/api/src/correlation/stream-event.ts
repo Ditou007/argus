@@ -6,7 +6,11 @@ const asNumber = (v: unknown, fallback: number): number => (typeof v === "number
 
 const parseDate = (v: unknown): Date | null => {
   const s = asString(v);
-  return s ? new Date(s) : null;
+  if (!s) return null;
+  const d = new Date(s);
+  // Reject Invalid Date — untrusted input; an NaN time would silently drop the
+  // event from attribution or throw later in toTraceRows().toISOString().
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>

@@ -77,9 +77,14 @@ export const createEventStore = (dbConfig: DBConfig, redisConfig: RedisConfig) =
 
     // Publish the FULL event to the durable stream for the streaming correlator.
     // For ALL ingested events (not just pod-scoped) — compose mode is pid-scoped.
-    // Additive: a stream failure must not break ingestion.
+    // Additive: a stream failure must not break ingestion (PG is already committed).
+    // SPEC_04 Slice 3: `eventId` is the Postgres serial id; when the PG firehose
+    // write is cut, the stream event id must be re-sourced (mint at ingestion).
     if (eventId) {
-      streamPublisher.publish(event, eventId).catch(() => {/* non-critical, additive */});
+      streamPublisher.publish(event, eventId).catch((err: unknown) => {
+        // Log (don't rethrow): a dropped stream publish is an audit gap worth a signal.
+        console.error("Stream publish failed:", err instanceof Error ? err.message : String(err));
+      });
     }
   };
 

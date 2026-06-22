@@ -8,8 +8,10 @@ import { createTraceStore } from "../trace-store.js";
 import { CORRELATED_TRACES_TABLE } from "../correlated-traces.js";
 import type { ActionHints } from "../types.js";
 
-// Compose-gated end-to-end plumbing test (SPEC_04 Slice 2b): publish → durable
-// Redis Stream → parse → streaming engine → trace-store → real ClickHouse.
+// Compose-gated plumbing test (SPEC_04 Slice 2b): a stream payload (in the exact
+// shape ingestion's stream-publisher XADDs — that layout is covered by its own
+// unit test; cross-package import isn't available here) → real Redis Stream →
+// parse → streaming engine → trace-store → real ClickHouse, read back.
 // Skipped unless CH_INTEGRATION=1. Run locally with:
 //   docker compose up -d clickhouse redis
 //   CH_INTEGRATION=1 pnpm --filter @argus/api test

@@ -172,7 +172,7 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 2c.
 - [ ] **Slice 3 — Findings → Postgres + cut Postgres off the firehose (T2b).**
-  - *Delivers:* streaming correlator writes only sessions/actions/correlations/unexplained findings to Postgres; ingestion's Postgres firehose write is **removed** (ClickHouse-only); the on-demand read path (`packages/api/src/routes/sessions.ts`) sources candidate events from ClickHouse.
+  - *Delivers:* streaming correlator writes only sessions/actions/correlations/unexplained findings to Postgres; ingestion's Postgres firehose write is **removed** (ClickHouse-only); the on-demand read path (`packages/api/src/routes/sessions.ts`) sources candidate events from ClickHouse. **Note:** the durable-stream event `id` is currently the Postgres serial (`event-store.ts`); removing the PG firehose write here means the stream `id` must be **re-sourced** (mint a stable id at ingestion).
   - *Acceptance:* during a capture, Postgres `events` gets **0 new rows** while ClickHouse `events` grows; findings still land in Postgres; on-demand correlation scores match the streaming path (SPEC_01/02 baselines unchanged).
   - *Test:* capture run → assert 0 new PG `events` rows + CH `events` growth + findings present.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.

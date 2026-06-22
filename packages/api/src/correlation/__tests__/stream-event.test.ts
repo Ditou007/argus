@@ -38,6 +38,18 @@ describe("parseStreamEvent", () => {
     expect(e?.created_at.toISOString()).toBe("2026-06-22T00:00:09.000Z");
   });
 
+  it("rejects an invalid event_time string to null (no NaN time downstream)", () => {
+    const e = parseStreamEvent(payload({ event_time: "not-a-date" }));
+    expect(e?.event_time).toBeNull();
+  });
+
+  it("falls created_at back to the epoch when both timestamps are garbage (never Invalid Date)", () => {
+    const e = parseStreamEvent(payload({ event_time: "nope", created_at: "also-nope" }));
+    expect(e?.created_at).toBeInstanceOf(Date);
+    expect(Number.isNaN(e?.created_at.getTime())).toBe(false);
+    expect(e?.created_at.toISOString()).toBe("1970-01-01T00:00:00.000Z");
+  });
+
   it("returns null on malformed JSON", () => {
     expect(parseStreamEvent("{not json")).toBeNull();
   });
