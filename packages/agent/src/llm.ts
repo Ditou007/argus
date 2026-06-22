@@ -12,6 +12,9 @@ import type { ModelTurn } from "./loop.js";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 600;
+// Cap the provider call so a hung LLM endpoint can't block the chat turn (and its
+// WebSocket) indefinitely — the turn fails fast and is reported instead.
+const LLM_TIMEOUT_MS = 30_000;
 
 /** Tool surface offered to the model — one input string per tool. */
 const TOOL_SPECS = [
@@ -52,6 +55,7 @@ const anthropicProvider = (key: string): Provider => ({
   call: async (userMessage) => {
     const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
@@ -81,6 +85,7 @@ const groqProvider = (key: string): Provider => ({
   call: async (userMessage) => {
     const res = await fetch(GROQ_URL, {
       method: "POST",
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
         model: "llama-3.1-8b-instant",
