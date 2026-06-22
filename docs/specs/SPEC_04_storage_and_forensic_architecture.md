@@ -190,10 +190,10 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Test:* `trace-reader` unit (parameterized query + parse) + `trace.http` supertest (200/empty/500); live-verified read-back against real ClickHouse.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 2c.
-- [ ] **Slice 5b — Forensic replay UI (T4).**
-  - *Delivers:* the dashboard renders the `/trace` endpoint for audit/replay ("what did the agent actually do") — a session's declared actions with their attributed events + verdict.
-  - *Acceptance:* the dashboard shows a session's correlated trace.
-  - *Test:* light UI render check.
+- [x] **Slice 5b — Forensic replay UI (T4).**
+  - *Delivers:* a dashboard page (`/sessions/:id/trace`) renders the `/trace` endpoint for audit/replay ("what did the agent actually do") via a pure `CorrelatedTrace` component — declared actions grouped, each with attributed syscalls, confidence, method, and the reason narrative.
+  - *Acceptance:* the dashboard page shows a session's correlated trace (and an empty state when none).
+  - *Test:* `CorrelatedTrace` render test (action/event/confidence/reason) + the trace page render test.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 5a.
 - [ ] **Slice 6 — Migration + cost validation (T5).**

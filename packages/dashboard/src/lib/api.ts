@@ -84,9 +84,20 @@ const fetchApi = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return res.json();
 };
 
+/**
+ * Fetch the API health status.
+ * @function fetchHealth
+ * @returns the health response
+ */
 export const fetchHealth = () =>
   fetchApi<HealthResponse>("/api/health");
 
+/**
+ * Fetch captured events, optionally filtered.
+ * @function fetchEvents
+ * @param filters - optional type/binary/limit/offset filters
+ * @returns the paginated events response
+ */
 export const fetchEvents = (filters: EventFilters = {}) => {
   const params = new URLSearchParams();
   if (filters.type) params.set("type", filters.type);
@@ -97,18 +108,76 @@ export const fetchEvents = (filters: EventFilters = {}) => {
   return fetchApi<EventsResponse>(`/api/events${qs ? `?${qs}` : ""}`);
 };
 
+/**
+ * Fetch event-type counts.
+ * @function fetchStats
+ * @returns the stats response
+ */
 export const fetchStats = () =>
   fetchApi<StatsResponse>("/api/events/stats");
 
+/**
+ * Fetch the list of agent sessions.
+ * @function fetchSessions
+ * @returns the sessions list
+ */
 export const fetchSessions = () =>
   fetchApi<{ sessions: AgentSession[] }>("/api/sessions");
 
+/**
+ * Fetch a single session by id.
+ * @function fetchSession
+ * @param id - the session id
+ * @returns the session
+ */
 export const fetchSession = (id: string) =>
   fetchApi<{ session: AgentSession }>(`/api/sessions/${id}`);
 
+/**
+ * Fetch a session's timeline (actions + correlated events).
+ * @function fetchSessionTimeline
+ * @param id - the session id
+ * @returns the session + timeline
+ */
 export const fetchSessionTimeline = (id: string) =>
   fetchApi<{ session: AgentSession; timeline: TimelineEntry[] }>(`/api/sessions/${id}/timeline`);
 
+// One row of the ClickHouse-backed correlated trace (SPEC_04 forensic replay).
+export interface TraceEvent {
+  session_id: string;
+  action_id: string;
+  action_type: string;
+  process_pid: number;
+  process_binary: string;
+  function_name: string;
+  event_time: string;
+  confidence: number;
+  method: string;
+  signal_scores: string; // JSON string
+  reasons: string; // JSON string
+}
+
+export interface TraceResponse {
+  session_id: string;
+  count: number;
+  events: TraceEvent[];
+}
+
+/**
+ * Fetch a session's ClickHouse-backed correlated trace (SPEC_04 forensic replay).
+ * @function fetchSessionTrace
+ * @param id - the session id
+ * @returns the trace response (declared actions + attributed events + verdict)
+ */
+export const fetchSessionTrace = (id: string) =>
+  fetchApi<TraceResponse>(`/api/sessions/${id}/trace`);
+
+/**
+ * Format a timestamp as a relative "time ago" string.
+ * @function formatTimeAgo
+ * @param dateStr - an ISO timestamp
+ * @returns a human-readable relative time
+ */
 export const formatTimeAgo = (dateStr: string): string => {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (seconds < 5) return "just now";
