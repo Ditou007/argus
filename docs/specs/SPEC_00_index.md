@@ -4,7 +4,7 @@ Specs are the source of truth for Argus subsystems. Each spec is `Goal · Tasks 
 written before the code and kept true as the code changes. The `## Plan` section is added
 by the Plan phase (`/keel:plan`) and ticked off slice by slice during Build.
 
-**Last updated:** 2026-06-18
+**Last updated:** 2026-06-22
 
 ## Index
 
@@ -12,7 +12,8 @@ by the Plan phase (`/keel:plan`) and ticked off slice by slice during Build.
 |---|---|---|
 | [SPEC_01](./SPEC_01_correlation_accuracy.md) | Correlation engine — accuracy harness & unexplained-behavior detection | 🟢 Build complete (all 11 slices + HTTP-contract tests merged) |
 | [SPEC_02](./SPEC_02_trustworthy_unexplained.md) | Trustworthy unexplained-behaviour — pod-scoped capture, risk-ranked triage, D14 write attribution | 🟢 Moat delivered (Slices 1–6 + 2b on main; D15/OTel deferred → backlog) |
-| [SPEC_03](./SPEC_03_live_demo.md) | Live interactive demo — `docker compose up`, attackable chatbot agent, chat + live Argus view, honest README | 🟢 Building (6-slice plan committed; Slice 1 done — compose stack + capture proven) |
+| [SPEC_03](./SPEC_03_live_demo.md) | Live interactive demo — `docker compose up`, attackable chatbot agent, chat + live Argus view, honest README | 🟢 Complete (all 6 slices; one-command attack-and-catch demo) |
+| [SPEC_04](./SPEC_04_storage_and_forensic_architecture.md) | Storage & forensic architecture — columnar firehose+traces, Postgres findings/index, retention | 🟡 Define (draft outline; see [ADR 0001](../adr/0001-forensic-first-runtime-governance.md)) |
 
 ## Conventions
 
