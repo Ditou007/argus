@@ -41,7 +41,7 @@ const liveStream = createLiveStream(server, pool, { redis: config.redis });
 // open action windows, and persist correlated traces to ClickHouse (ADR 0002).
 const traceStore = createTraceStore(createClickHouseWriter(config.clickhouse));
 const traceReader = createTraceReader(config.clickhouse);
-const streaming = createStreamingService({ traceStore });
+const streaming = createStreamingService({ traceStore, settleMs: config.traceSettleMs });
 const streamRedis = new Redis(config.redis);
 streamRedis.on("error", (err: Error) => console.error("Stream consumer redis error:", err.message));
 // ioredis' xgroup/xreadgroup overloads don't fit the loose ConsumerRedis contract;
