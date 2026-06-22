@@ -168,8 +168,8 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
 - [x] **Slice 2d — Rehydrate open windows on restart (T2a).**
   - *Delivers:* on startup the correlator rebuilds its open declared-action windows from Postgres (`agent_actions WHERE ended_at IS NULL`, joined to the session for scope + `started_at`) and re-opens each via `openAction`, before the consumer starts. Combined with the consumer group redelivering unacked stream entries, an action open across a restart still attributes the events that arrive after restart and closes into a trace.
   - *Scope note:* this rehydrates the **windows**, not already-consumed (acked) events. Full replay of a window's earlier events from ClickHouse requires a **stable event id** (the stream id is currently the Postgres serial, which ClickHouse `events` does not store) — that id is established by **Slice 3** (cutting Postgres off the firehose), so full event-replay rehydrate rides with Slice 3. Honest current guarantee: windows survive restart; events acked before the restart are not re-accumulated.
-  - *Acceptance:* given open actions in Postgres, `rehydrate` re-opens a window for each before the consumer starts (verified via `openActionIds`); a closed action is not re-opened.
-  - *Test:* unit — `rehydrate(pool, service)` with a fake pool of open/closed actions → only open ones re-opened.
+  - *Acceptance:* given open actions in Postgres, `rehydrateWindows` calls `openAction` for each before the consumer starts (verified via the captured opener calls); a closed action (`ended_at` set) is excluded by the query.
+  - *Test:* unit — `rehydrateWindows(pool, service)` with a fake pool → each row re-opened with its scope + start, the query filters `ended_at IS NULL`, empty → 0.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 2c.
 - [ ] **Slice 3 — Findings → Postgres + cut Postgres off the firehose (T2b).**
