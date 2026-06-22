@@ -83,6 +83,17 @@ describe("createStreamingService — settle window", () => {
     expect(resolved).toContain("evil.example.com"); // hints resolved at close, before settle
   });
 
+  it("swallows a persist failure at settle (instrumentation must not break the lifecycle)", async () => {
+    const store = { persist: async () => { throw new Error("clickhouse down"); } };
+    const { scheduler, runAll } = manualScheduler();
+    const svc = createStreamingService({ traceStore: store, scheduler, settleMs: 60_000 });
+    svc.openAction("a1", { pod_name: null, agent_pid: 4242 }, new Date("2026-06-22T00:00:00Z"));
+    svc.ingest(ev());
+    await svc.closeAction(closeInput());
+    // The deferred finalize must resolve (error logged + swallowed), not reject.
+    await expect(runAll()).resolves.toBeUndefined();
+  });
+
   it("persists nothing when the action was never opened, even after settle", async () => {
     const { store, persisted } = fakeTraceStore();
     const { scheduler, runAll } = manualScheduler();
