@@ -1,89 +1,137 @@
 # SPEC_04 — Storage & Forensic Architecture (store the gap, retain the trace)
 
-**Subsystem:** `packages/ingestion/**` (event write path) · `packages/api/src/correlation/**`
-(correlation + findings) · a new columnar event store (ClickHouse-class) · `docker-compose.yml`
-(new store service) · retention/TTL config.
+**Subsystem:** `packages/ingestion/**` (the firehose write path — `event-store.ts`) · a new
+**ClickHouse** columnar store (raw events + correlated traces) · `packages/api/src/correlation/**`
+(the correlator — now a streaming consumer that reads the columnar store and writes findings) ·
+`docker-compose.yml` (new ClickHouse service) · retention/TTL config · `packages/api` + `packages/dashboard`
+(the forensic replay surface).
 **Last updated:** 2026-06-22
-**Status:** 🟡 Define (DRAFT outline — needs a proper `/keel:spec` Define interview before Plan/Build).
-Direction is locked by [ADR 0001](../adr/0001-forensic-first-runtime-governance.md); the slicing
-below is provisional.
+**Status:** 🟢 Define complete — decisions locked, ready for `/keel:plan`. Engine = **ClickHouse**
+(real, per [ADR 0001](../adr/0001-forensic-first-runtime-governance.md)); correlation = **streaming**
+(production-correct, not action-end batch); scope = **full T1–T5**; retention = **tiered 30d / 180d / ∞**;
+migration = **phased cutover** (transient dual-write T1→T2, then single write path).
 
 ---
 
 ## Why (problem)
 
-Argus currently writes the **entire syscall firehose into Postgres** (≈1.4M rows in the demo).
-Storage, ingest, and triage-query cost all scale with the firehose, not with the product's value
-(the *gap*). The S3/S4 risk de-noise is **query-time only** — it ranks, it does not reduce what is
-stored. This does not scale, and it does not match Argus's forensic-audit identity.
+Argus currently writes the **entire syscall firehose into Postgres** — `event-store.insert()`
+INSERTs every Tetragon event into the `events` table (raw JSONB) and publishes to Redis; the
+correlator then queries that `events` table at **action-end**. In the demo this reached ≈1.4M rows.
+Three problems:
+
+1. **Cost scales with the firehose, not the value.** Storage, ingest, and triage-query cost all
+   grow with the raw syscall volume, not with the *gap* (the product's value). The SPEC_03/04 risk
+   de-noise is **query-time only** — it ranks, it does not reduce what is stored.
+2. **Action-end correlation races ingestion lag.** For fast operations the syscalls aren't yet
+   committed to Postgres when the declared action closes, so the end-of-action batch query misses
+   them (a known SPEC_03 failure mode).
+3. **Wrong shape for a forensic-audit product.** ADR 0001 commits Argus to *forensic-first runtime
+   governance & audit*; that identity needs a cheap, time-bounded, queryable trace — not an
+   unbounded relational firehose.
 
 ## Goal
 
-Make durable storage proportional to **what matters** while **retaining a queryable forensic trace**:
-the raw syscall firehose and the correlated traces live in a **columnar store (ClickHouse-class)** with
-a configurable TTL (~30 days → the EU AI Act 6-month floor); **Postgres holds only** sessions, declared
-actions, correlations, and risk-ranked **unexplained** findings (the product surface + index). Postgres
-never ingests the firehose. The result: a cheap, time-bounded audit record + a fast findings index —
-the storage shape a forensic governance/audit product needs.
+**Make durable storage proportional to what matters, retain a queryable forensic trace, and correlate
+in-flight.** The raw syscall firehose and the correlated traces live in **ClickHouse** with tiered,
+configurable TTL; **Postgres holds only** sessions, declared actions, correlations, and risk-ranked
+**unexplained findings** (the product surface + index) and **never ingests the firehose**. The
+correlator becomes a **streaming consumer** of the live event stream, attributing syscalls to open
+declared-action windows incrementally — removing the action-end ingestion-lag race. The result: a
+cheap, time-bounded audit record + a fast findings index + lower-latency detection — the storage and
+correlation shape a forensic governance/audit product needs.
+
+Why it matters: this is the architecture ADR 0001 commits to and the cost reality SPEC_03 exposed.
+Without it the demo's 1.4M-row firehose is the production cost curve, and "governance & audit" has no
+retained trace to stand on.
 
 ## Architecture (target)
 
 ```
-agent (SDK)        Tetragon (eBPF)        ingestion            columnar store (ClickHouse-class)
-  └─ declares ───► captures syscalls ───► writes RAW events ──► events + correlated_traces (TTL)
-       │                                        │
-       ▼                                        ▼  (on action-end OR streaming)
-   Postgres ◄──────────────── correlator queries the store for the action's PID/time window,
-   sessions · actions · correlations · findings (the gap + index)  writes only the FINDING ──► Postgres
+agent (SDK)        Tetragon (eBPF)        ingestion                 ClickHouse (columnar)
+  └─ declares ───► captures syscalls ───► writes RAW events ───────► events            (TTL 30d)
+       │                  │                     │  + Redis publish        correlated_traces (TTL 180d)
+       ▼                  │                     ▼                              ▲
+   Postgres               └────────────────► STREAMING correlator ────────────┘ writes the trace
+   sessions · actions · correlations · findings ◄── consumes the live stream, attributes syscalls to
+   (the gap + index, retained ∞)                    open action windows, writes only the FINDING ─► PG
 ```
 
-Key rule: **ingestion → columnar (raw); correlator → Postgres (findings only).** The columnar store is
-the system of record for the trace; Postgres is the system of record for the findings/surface.
+**Invariants:**
+- **ingestion → ClickHouse (raw firehose only); correlator → ClickHouse `correlated_traces` (the
+  explained trace) + Postgres (findings only).** Postgres never receives a raw syscall row.
+- ClickHouse is the system of record for the **trace**; Postgres is the system of record for the
+  **findings/surface**.
+- Correlation is **streaming**: the correlator consumes the Redis event stream and attributes events
+  to open declared-action windows as they arrive — it does **not** issue an end-of-action batch query
+  that can race ingestion lag.
+
+## Retention tiers (configurable via env)
+
+| Data | Store | Default TTL | Rationale |
+| --- | --- | --- | --- |
+| Raw syscall firehose (`events`) | ClickHouse | **30d** | Cost control; the unattributed bulk. |
+| Correlated traces (`correlated_traces`) | ClickHouse | **180d** | The EU AI Act Art. 12/19 6-month high-risk audit floor — the retained forensic record. |
+| Findings + index (sessions/actions/correlations/unexplained) | Postgres | **∞** | The product surface; small, grows with findings not firehose. |
+
+Each TTL is overridable by env (`ARGUS_RAW_TTL_DAYS`, `ARGUS_TRACE_TTL_DAYS`). **No benign-noise
+sampling in v1** — TTL plus the columnar store handles cost; sampling is a later optimization.
 
 ---
 
-## Tasks (provisional vertical slices — confirm in Define)
+## Tasks (atomic vertical slices)
 
-- **T1 — Columnar store wired into compose.** Add a ClickHouse-class service; ingestion writes raw
-  events there instead of (or in addition to) Postgres. Prove capture lands + is queryable.
-- **T2 — Correlator reads the store, writes findings to Postgres.** On action-end (or streaming),
-  query the columnar store for the PID/time window; persist only sessions/actions/correlations/findings
-  to Postgres. Postgres firehose write path removed.
-- **T3 — Retention/TTL + partitioning.** Configurable TTL on raw + traces (default toward the EU 6-mo
-  floor); time-partitioned; old partitions auto-drop.
-- **T4 — Forensic query/replay surface.** API + UI can pull a session's full correlated trace from the
-  columnar store for audit/replay (the "what did the agent actually do" record).
-- **T5 — Migration + cost validation.** Move existing/demo data; measure storage + query cost vs. the
-  Postgres-firehose baseline; document the win.
+- **T1 — ClickHouse in compose + ingestion dual-writes raw events.** Add a ClickHouse service to
+  `docker-compose.yml`; create the `events` table; make `event-store` write each raw Tetragon event
+  to ClickHouse **in addition to** the existing Postgres path (transient dual-write — nothing
+  downstream breaks yet). Prove a captured session's raw events land in ClickHouse and are queryable.
+- **T2 — Streaming correlator reads ClickHouse, writes findings; cut Postgres off the firehose.**
+  Reimplement the correlator as a streaming consumer of the Redis event stream: attribute syscalls to
+  open declared-action windows incrementally, write the explained trace to ClickHouse
+  `correlated_traces`, and write only sessions/actions/correlations/unexplained findings to Postgres.
+  **Remove the Postgres firehose write** from `event-store` (ingestion → ClickHouse only). This closes
+  the action-end ingestion-lag race.
+- **T3 — Retention/TTL + partitioning.** Time-partition the ClickHouse tables; apply env-configurable
+  TTL (raw 30d / traces 180d defaults) so old partitions auto-drop. Postgres findings unaffected.
+- **T4 — Forensic query/replay surface.** An API endpoint serves a session's full correlated trace
+  (declared actions + attributed syscalls + verdict) from ClickHouse; the dashboard renders it for
+  audit/replay ("what did the agent actually do").
+- **T5 — Migration + cost validation.** Cut the demo over to the new path; measure ClickHouse
+  storage + query cost against the Postgres-firehose baseline (~1.4M rows) and record the win; confirm
+  SPEC_01/02 correlation behavior and baselines are unchanged.
 
-## Done (draft acceptance — each becomes a test/recorded check)
+## Done (acceptance — each becomes a test/recorded check)
 
-- [ ] Raw syscall events + correlated traces are stored in the columnar store, not Postgres; a fresh
-  `docker compose up` captures into it and serves a session trace.
-- [ ] Postgres holds only sessions/actions/correlations/findings; row growth is proportional to
-  findings, not firehose (demonstrated against the ~1.4M-row baseline).
-- [ ] TTL expires raw events after the configured window; findings persist independently.
-- [ ] A session's full correlated trace is queryable for audit/replay.
-- [ ] `keel eval` green; SPEC_01/02 correlation behavior and baselines unchanged (this is a storage/
-  retention change, not a scoring change).
+- [ ] **[T1]** A fresh `docker compose up` brings up ClickHouse; after a capture, raw syscall events
+  are queryable in ClickHouse (`SELECT count() FROM events WHERE session = …` > 0).
+- [ ] **[T2]** Ingestion writes raw syscalls **only** to ClickHouse: during a capture the Postgres
+  `events` row count stays flat (0 new rows) while ClickHouse `events` grows.
+- [ ] **[T2]** The streaming correlator attributes a declared action's syscalls and emits the
+  undeclared gap as a finding **without an end-of-action batch query** — verified by the SPEC_03
+  fast-op fixture that previously raced (it now correlates deterministically).
+- [ ] **[T2]** Postgres holds only sessions/actions/correlations/findings; its row growth is
+  proportional to findings, not the firehose — demonstrated against the ~1.4M-row baseline (Postgres
+  total rows after a demo run are orders of magnitude below the captured syscall count).
+- [ ] **[T3]** Raw `events` expire after the configured TTL while `correlated_traces` persist to their
+  (longer) TTL and Postgres findings persist — asserted with a short test TTL (rows past the window are
+  gone; rows inside it and the findings remain). TTL is env-overridable.
+- [ ] **[T4]** A session's full correlated trace (declared actions + attributed syscalls + verdict) is
+  returned by an API endpoint and rendered in the dashboard for audit/replay.
+- [ ] **[T5]** Migration moves demo data and a recorded measurement shows ClickHouse storage/query
+  cost vs. the Postgres-firehose baseline (the documented "store the gap" win).
+- [ ] **[all]** `keel eval` is green and SPEC_01/02 correlation tests pass **unmodified** — this is a
+  storage/retention/correlation-timing change, not a scoring change; risk/correlation outputs for the
+  existing fixtures are unchanged.
 
 ---
 
-## Open questions (resolve in the Define interview)
+## Non-goals (explicit)
 
-1. **Engine:** ClickHouse specifically, or an embeddable/lighter columnar option to keep the
-   `docker compose` demo footprint small? (Demo simplicity vs. production realism.)
-2. **Correlation timing:** at action-end (simple, has an ingestion-lag race for fast ops — known from
-   SPEC_03) vs. true streaming correlation (more complex, lower latency).
-3. **Dual-write vs. single-write during migration:** keep Postgres raw temporarily for safety, or cut over?
-4. **Retention default + configurability:** 30d? 6-mo (EU floor)? per-tenant? sampling of benign noise?
-5. **Intent-capture fork (cross-cutting, may be its own spec):** keep SDK-declared only, or add an
-   AgentSight-style instrumentation-free TLS-interception capture mode for coverage?
-6. **Enforcement (explicitly OUT of this spec):** observe→alert only; soft enforcement is a later spec
-   (return-error/pause at the action boundary, never SIGKILL) per ADR 0001.
-
-## Non-goals
-
-- **No enforcement / kill switch** (ADR 0001 — observe-first; later spec for soft enforcement).
-- **No scoring change** — correlation/risk behavior is unchanged; this is purely where/how long data lives.
-- **Not the intent-capture redesign** — SDK vs. TLS interception is tracked separately.
+- **No enforcement / kill switch.** Observe→alert only; soft enforcement (return-error / pause at the
+  action boundary, never SIGKILL) is a later spec, per ADR 0001.
+- **No scoring change.** Correlation/risk behavior is unchanged; this spec only changes **where** data
+  lives, **how long**, and **when** correlation runs (streaming vs. batch).
+- **Not the intent-capture redesign.** Argus stays **SDK-declared-intent only** for v1. An
+  AgentSight-style instrumentation-free TLS-interception capture mode is a **separate future spec**
+  (open fork in ADR 0001), not part of SPEC_04.
+- **No benign-noise sampling in v1.** TTL handles cost; sampling is a later optimization.

@@ -32,6 +32,11 @@
         {
           "when": "^packages/ingestion/src/event-filter\\.ts$",
           "requireTouched": "^docs/specs/SPEC_02_trustworthy_unexplained\\.md$"
+        },
+        {
+          "when": "^packages/ingestion/src/(event-store|clickhouse-store)\\.ts$",
+          "requireTouched": "^docs/specs/SPEC_04_storage_and_forensic_architecture\\.md$",
+          "$note": "SPEC_04 owns the firehose write path (Postgres→ClickHouse) and retention — changing where/how raw events are written must touch SPEC_04."
         }
       ]
     }
