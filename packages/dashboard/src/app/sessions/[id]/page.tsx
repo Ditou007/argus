@@ -6,6 +6,12 @@ import Link from "next/link";
 import { fetchSessionTimeline, formatTimeAgo, type AgentSession, type TimelineEntry } from "@/lib/api";
 import { SessionTimeline } from "@/components/session-timeline";
 import { useLiveStream } from "@/hooks/use-live-stream";
+import { appendLiveEvent } from "@/lib/append-live-event";
+
+// Bound the live syscalls retained per action — an active session emits events
+// continuously; without a cap the timeline grows until the tab freezes. Older
+// events remain in the durable store (ClickHouse) and the forensic trace API.
+const MAX_LIVE_EVENTS_PER_ACTION = 500;
 
 export default function SessionDetailPage() {
   const params = useParams();
@@ -29,40 +35,12 @@ export default function SessionDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Live event stream — append kernel events as they arrive
-  const handleEvent = useCallback((data: { id: number; event_type: string; pod_name: string; process_pid: number | null; process_binary: string | null; function_name: string | null; event_time: string | null }) => {
+  // Live event stream — append kernel events to the latest action (bounded tail).
+  const handleEvent = useCallback((data: Parameters<typeof appendLiveEvent>[1]) => {
     setLiveEventCount((c) => c + 1);
-
-    // Add to the "latest action" in the timeline as an unscored event
-    setTimeline((prev) => {
-      if (prev.length === 0) return prev;
-
-      const updated = [...prev];
-      const lastIdx = updated.length - 1;
-      const lastEntry = updated[lastIdx];
-
-      // Only append to the last action if it hasn't ended yet, or is the most recent
-      const liveEvent = {
-        id: data.id,
-        event_type: data.event_type,
-        process_binary: data.process_binary,
-        process_pid: data.process_pid,
-        function_name: data.function_name,
-        raw_event: {},
-        created_at: data.event_time ?? new Date().toISOString(),
-        // Mark as live (unscored)
-        confidence: undefined as number | undefined,
-        correlation_method: "live_stream" as string | undefined,
-        signal_scores: undefined as Record<string, number> | undefined,
-      };
-
-      updated[lastIdx] = {
-        ...lastEntry,
-        events: [...lastEntry.events, liveEvent],
-      };
-
-      return updated;
-    });
+    setTimeline((prev) =>
+      appendLiveEvent(prev, data, MAX_LIVE_EVENTS_PER_ACTION, new Date().toISOString())
+    );
   }, []);
 
   // Live correlation updates — replace event counts with scored results

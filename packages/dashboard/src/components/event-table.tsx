@@ -2,20 +2,27 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { fetchEvents, formatTimeAgo, type StoredEvent, type EventFilters } from "@/lib/api";
-
-const TYPE_COLORS: Record<string, string> = {
-  process_exec: "#22c55e",
-  process_exit: "#f59e0b",
-  process_kprobe: "#3b82f6",
-  unknown: "#737373",
-};
+import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
+import { TypeBadge } from "@/components/event-type-badge";
 
 interface EventTableProps {
   filters: EventFilters;
 }
 
 const PAGE_SIZE = 50;
+// Bound the rendered window so deep infinite-scroll can't grow the DOM until the
+// tab freezes. ~1000 rows renders fine without virtualization; beyond it we stop
+// auto-loading and ask the user to narrow filters (older rows stay in the store).
+const MAX_ROWS = 1000;
 
+/**
+ * Paginated, auto-loading event table. Infinite scroll loads older pages as the
+ * sentinel scrolls into view; the rendered window is capped at MAX_ROWS so the
+ * DOM stays bounded (no browser freeze on a busy firehose).
+ * @function EventTable
+ * @param props - the active event filters
+ * @returns the events table with infinite scroll
+ */
 export const EventTable = ({ filters }: EventTableProps) => {
   const [events, setEvents] = useState<StoredEvent[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,13 +68,16 @@ export const EventTable = ({ filters }: EventTableProps) => {
     return () => clearInterval(interval);
   }, [load, offset]);
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     const next = offset + PAGE_SIZE;
     setOffset(next);
     load(next);
-  };
+  }, [offset, load]);
 
-  const hasMore = events.length < total;
+  const cappedAtMax = events.length >= MAX_ROWS;
+  const hasMore = events.length < total && !cappedAtMax;
+  // Infinite scroll: auto-load older pages as the sentinel nears the viewport.
+  const sentinelRef = useInfiniteScroll(handleLoadMore, hasMore && !loading);
 
   return (
     <div>
@@ -171,47 +181,18 @@ export const EventTable = ({ filters }: EventTableProps) => {
         </div>
       )}
 
+      {/* Infinite-scroll sentinel: auto-loads the next page when scrolled near. */}
       {hasMore && (
-        <div style={{ padding: "1rem", textAlign: "center" }}>
-          <button
-            onClick={handleLoadMore}
-            disabled={loading}
-            style={{
-              padding: "0.5rem 1.5rem",
-              backgroundColor: "#262626",
-              border: "1px solid #404040",
-              borderRadius: "6px",
-              color: "#e5e5e5",
-              cursor: loading ? "wait" : "pointer",
-              fontSize: "0.8125rem",
-            }}
-          >
-            {loading ? "Loading..." : `Load More (${events.length} of ${total})`}
-          </button>
+        <div ref={sentinelRef} style={{ padding: "1rem", textAlign: "center", color: "#737373", fontSize: "0.8125rem" }}>
+          {loading ? "Loading more…" : `Scroll for more (${events.length} of ${total})`}
+        </div>
+      )}
+
+      {cappedAtMax && events.length < total && (
+        <div style={{ padding: "1rem", textAlign: "center", color: "#737373", fontSize: "0.8125rem" }}>
+          Showing the first {MAX_ROWS.toLocaleString()} of {total.toLocaleString()} — narrow the filters to see older events.
         </div>
       )}
     </div>
-  );
-};
-
-const TypeBadge = ({ type }: { type: string }) => {
-  const color = TYPE_COLORS[type] ?? "#737373";
-  const label = type.replace("process_", "");
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "0.125rem 0.5rem",
-        borderRadius: "4px",
-        fontSize: "0.6875rem",
-        fontWeight: 500,
-        fontFamily: "monospace",
-        backgroundColor: `${color}1a`,
-        color,
-        border: `1px solid ${color}33`,
-      }}
-    >
-      {label}
-    </span>
   );
 };

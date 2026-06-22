@@ -6,8 +6,12 @@ import { useLiveStream } from "@/hooks/use-live-stream";
 import { sendChat, latestSessionId, fetchTriage } from "@/lib/agent-client";
 import { ChatPanel, type ChatMessage } from "@/components/chat-panel";
 import { ArgusDetection } from "@/components/argus-detection";
+import { capTail } from "@/lib/cap-tail";
 
 const POLL_MS = 2000;
+// Bound the in-memory chat history so a long demo session can't grow the
+// browser's state/DOM without limit.
+const MAX_MESSAGES = 200;
 const panelStyle: React.CSSProperties = {
   background: "#0f0f0f",
   border: "1px solid #1f1f1f",
@@ -67,14 +71,14 @@ export default function DemoPage() {
 
   const onSend = useCallback(
     async (text: string) => {
-      setMessages((m) => [...m, { role: "user", text }]);
+      setMessages((m) => capTail([...m, { role: "user", text }], MAX_MESSAGES));
       setPending(true);
       try {
         const res = await sendChat(text);
-        setMessages((m) => [...m, { role: "agent", text: res.reply, runs: res.runs }]);
+        setMessages((m) => capTail([...m, { role: "agent", text: res.reply, runs: res.runs }], MAX_MESSAGES));
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        setMessages((m) => [...m, { role: "agent", text: `⚠ agent error: ${detail}` }]);
+        setMessages((m) => capTail([...m, { role: "agent", text: `⚠ agent error: ${detail}` }], MAX_MESSAGES));
       } finally {
         setPending(false);
         void refreshTriage();
