@@ -5,7 +5,8 @@ a **chatbot agent backend** (new, tool-using, weakly-guarded, SDK-instrumented) 
 (`packages/dashboard` — chat + live Argus view) · `packages/api/src/ws/**` + `routes/unexplained`
 (live stream + triage, existing) · `README.md` (one-command quick-start).
 **Last updated:** 2026-06-19
-**Status:** 🟢 Building — Slices 1–5 done (Slice 6 README/fresh-clone next). Full stack up via `docker compose up`; compose-mode
+**Status:** ✅ Complete — all 6 slices done. One-command `docker compose up` demo: attack a tool-using
+chatbot, watch Argus catch the undeclared behavior live. Full stack up via `docker compose up`; compose-mode
 Tetragon capture proven; compose correlation via `pid: host`; **attackable tool-using chatbot
 (`packages/agent`)** wired in (LLM loop + `run_shell`/`read_file`/`http_get`, weak guardrail,
 Argus-instrumented, chat HTTP/WS) — live attack-and-catch verified; **legible renderer
@@ -142,10 +143,17 @@ README, reach the live "caught it" state; record and fix every gap.
   prints the Groq attack as `[HIGH] Read credential file /root/.ssh/id_rsa` at the top. Plus a safe
   de-noise extension (shared libs/`.so`, sysfs, benign `/proc`, TLS config → LOW) so runtime noise
   drops out of the feed; sensitive `/proc/*/environ|mem` and TLS keys stay HIGH.
-- [ ] **T6 — a stranger can run it.** A fresh clone, following only the README, reaches the live
+- [x] **T6 — a stranger can run it.** A fresh clone, following only the README, reaches the live
   caught-it state on the verified platform; gaps found are fixed; verified-vs-expected platforms
-  recorded. *(check: logged fresh-clone walkthrough with gaps→fixes.)*
-- [ ] **Gate stays green.** `keel eval` passes; SPEC_01/02 baselines and tests do not regress.
+  recorded. *(check: logged fresh-clone walkthrough with gaps→fixes.)* **Done 2026-06-19:** README
+  Quick-Start rewritten to lead with the one-command demo (prereqs: Docker + one LLM key →
+  `cp .env.example .env` → `docker compose up` → open `localhost:3000/demo` → attack → watch); stale
+  "compose correlation unreliable" framing corrected (now `pid: host` exact-match); roadmap updated.
+  **Fresh-clone walkthrough (clean clone of this branch):** `.env.example` carries `GROQ_API_KEY`;
+  `docker compose up` starts exactly the demo services (agent/api/dashboard/ingestion + tetragon/
+  postgres/redis; `sample-agent` stays profile-gated); `pnpm demo` wired. **No gaps found.** Platforms
+  recorded: verified macOS/arm64, Linux/x86_64 expected.
+- [x] **Gate stays green.** `keel eval` passes; SPEC_01/02 baselines and tests do not regress.
 
 ---
 
@@ -196,7 +204,7 @@ agent is sandboxed and benign by construction (inert exfil target).
   `keel eval` green · **Depends on:** 3, 4 · **Done 2026-06-19:** `/demo` page (`ChatPanel` +
   `ArgusDetection`, `@argus/render`-driven), agent CORS, 11 tests, `dashboard` compose service
   (port 3000). Verified live against the Groq agent.
-- [ ] **Slice 6 — One-command README + fresh-clone validation** *(T6)* · **Delivers:** quick-start
+- [x] **Slice 6 — One-command README + fresh-clone validation** *(T6)* · **Delivers:** quick-start
   (Docker + LLM key → `docker compose up` → attack → watch) + fresh-clone walkthrough · **Acceptance:**
   a clean clone following only the README reaches the caught-it state; gaps→fixes logged; verified
   platforms recorded · **DoD:** doc-sync green · **Depends on:** 5 · **Cold-start note (from S1
