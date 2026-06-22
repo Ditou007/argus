@@ -62,7 +62,10 @@ describe.skipIf(!RUN)("live wiring — integration (consumer group → engine �
   });
 
   it("open → stream → consumer ingests → close persists a trace to ClickHouse", async () => {
-    const service = createStreamingService({ traceStore });
+    // Manual scheduler: drive the settle finalizer deterministically (Slice 2e).
+    const pending: Array<() => void | Promise<void>> = [];
+    const scheduler = { defer: (fn: () => void | Promise<void>) => void pending.push(fn) };
+    const service = createStreamingService({ traceStore, scheduler });
     const consumer = createStreamConsumer({
       redis: consumerRedis,
       streamKey: STREAM_KEY,
@@ -86,7 +89,7 @@ describe.skipIf(!RUN)("live wiring — integration (consumer group → engine �
     const processed = await consumer.pollOnce(200);
     expect(processed).toBe(2);
 
-    const summary = await service.closeAction({
+    await service.closeAction({
       action_id: "act-2c",
       session_id: "sess-2c",
       action_type: "network_request",
@@ -96,7 +99,8 @@ describe.skipIf(!RUN)("live wiring — integration (consumer group → engine �
       pod_name: null,
       ended_at: new Date("2026-06-22T00:00:10Z"),
     });
-    expect(summary?.events_correlated).toBeGreaterThan(0);
+    // Settle tick: finalize the window and persist (deferred since Slice 2e).
+    for (const fn of pending) await fn();
 
     const rows = (await reader
       .query({ query: `SELECT count() AS count FROM ${CORRELATED_TRACES_TABLE} WHERE action_id = 'act-2c'`, format: "JSONEachRow" })
