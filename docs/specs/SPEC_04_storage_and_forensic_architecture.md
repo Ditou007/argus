@@ -135,3 +135,46 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   AgentSight-style instrumentation-free TLS-interception capture mode is a **separate future spec**
   (open fork in ADR 0001), not part of SPEC_04.
 - **No benign-noise sampling in v1.** TTL handles cost; sampling is a later optimization.
+
+---
+
+## Plan (sliced, dependency-ordered — `/keel:build` ticks these `[ ]` → `[x]`)
+
+- [ ] **Slice 1 — ClickHouse service + raw-event dual-write (T1).**
+  - *Delivers:* `docker compose up` brings up ClickHouse; ingestion writes each raw Tetragon event to a new ClickHouse `events` table **in addition to** Postgres (transient dual-write — nothing downstream breaks).
+  - *Acceptance:* after a capture, `SELECT count() FROM events` in ClickHouse > 0; the Postgres path is unchanged.
+  - *Test:* `clickhouse-store` insert → count query > 0 (fake-client unit + compose-gated integration).
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* none. *Touches:* `docker-compose.yml`, `packages/ingestion/src/clickhouse-store.ts` (new, injectable client), `config.ts`, `index.ts`; `@clickhouse/client` dep.
+- [ ] **Slice 2 — Streaming correlator: consume the stream, write `correlated_traces` (T2a).** ⚠ biggest slice — split if it overflows PR-size.
+  - *Delivers:* a background consumer of the Redis event stream maintains open declared-action windows, attributes syscalls **incrementally** (reusing existing scoring signals **unchanged**), and writes the explained trace to ClickHouse `correlated_traces`. On startup it **rehydrates open windows + their events from ClickHouse** and resumes (no lost correlations across restarts). PG firehose + on-demand path stay intact (safety).
+  - *Acceptance:* the explained trace lands in `correlated_traces`; the SPEC_03 fast-op fixture that previously raced now correlates deterministically; a restart mid-session resumes open windows from ClickHouse.
+  - *Test:* event-stream + declared action → trace produced; previously-racing fast-op fixture attributes correctly; restart-rehydration test.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 1.
+- [ ] **Slice 3 — Findings → Postgres + cut Postgres off the firehose (T2b).**
+  - *Delivers:* streaming correlator writes only sessions/actions/correlations/unexplained findings to Postgres; ingestion's Postgres firehose write is **removed** (ClickHouse-only); the on-demand read path (`routes/sessions.ts`) sources candidate events from ClickHouse.
+  - *Acceptance:* during a capture, Postgres `events` gets **0 new rows** while ClickHouse `events` grows; findings still land in Postgres; on-demand correlation scores match the streaming path (SPEC_01/02 baselines unchanged).
+  - *Test:* capture run → assert 0 new PG `events` rows + CH `events` growth + findings present.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 2.
+- [ ] **Slice 4 — Retention/TTL + partitioning (T3).**
+  - *Delivers:* time-partitioned ClickHouse tables with env-configurable TTL (`ARGUS_RAW_TTL_DAYS`=30 / `ARGUS_TRACE_TTL_DAYS`=180); old partitions auto-drop; Postgres findings unaffected.
+  - *Acceptance:* with a short test TTL, raw `events` past the window are gone while in-window rows, `correlated_traces`, and Postgres findings remain; TTL is env-overridable.
+  - *Test:* short-TTL expiry assertion (raw expires, traces + findings persist).
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 1.
+- [ ] **Slice 5 — Forensic query/replay surface (T4).**
+  - *Delivers:* an API endpoint serves a session's full correlated trace (declared actions + attributed syscalls + verdict) from ClickHouse; the dashboard renders it for audit/replay.
+  - *Acceptance:* the endpoint returns the full trace shape for a known session; the dashboard renders it.
+  - *Test:* endpoint returns trace for a seeded session; light UI render check.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slices 2, 3.
+- [ ] **Slice 6 — Migration + cost validation (T5).**
+  - *Delivers:* demo data cutover; a recorded measurement of ClickHouse storage/query cost vs. the ~1.4M-row Postgres-firehose baseline (the documented "store the gap" win); SPEC_01/02 correlation tests pass **unmodified**.
+  - *Acceptance:* recorded check shows Postgres row growth ∝ findings (orders of magnitude below captured syscall count); SPEC_01/02 baselines unchanged.
+  - *Test:* recorded cost/row-growth check + SPEC_01/02 fixtures pass without modification.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slices 1–4.
+
+**Risks:** (1) Slice 2 PR-size — reuse scoring signals untouched; split if it overflows. (2) ClickHouse testability under the coverage gate — injectable client → fake for unit/patch-coverage, compose-gated integration. (3) Correlator restart → **rehydrate open windows from ClickHouse** (decided). (4) Two correlation paths during cutover (2→3) must produce identical scores — SPEC_01/02 baselines are the guardrail. (5) ClickHouse TTL/partition DDL — verify against official ClickHouse docs (source-driven), not memory.
