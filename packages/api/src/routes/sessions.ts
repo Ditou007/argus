@@ -5,6 +5,14 @@ import type { createLiveStream } from "../ws/live-stream.js";
 
 type LiveStream = ReturnType<typeof createLiveStream>;
 
+/**
+ * Build the session routes (create/list/get/end/timeline) under /api/sessions.
+ * Action routes live in createActionRouter (session-actions.ts).
+ * @function createSessionsRouter
+ * @param pool - Postgres pool
+ * @param liveStream - WebSocket notifier for session/correlation events
+ * @returns an Express router with the session routes
+ */
 export const createSessionsRouter = (pool: pg.Pool, liveStream: LiveStream): IRouter => {
   const router = Router();
   const correlator = createCorrelator(pool);
@@ -133,111 +141,6 @@ export const createSessionsRouter = (pool: pg.Pool, liveStream: LiveStream): IRo
     } catch (err) {
       console.error("Failed to end session:", err);
       res.status(500).json({ error: "Failed to end session" });
-    }
-  });
-
-  // POST /api/sessions/:id/actions — create an action within a session
-  router.post("/:id/actions", async (req, res) => {
-    try {
-      const sessionId = req.params.id;
-      const { action_type, action_name, input_summary, metadata, started_at } = req.body;
-
-      if (!action_type) {
-        res.status(400).json({ error: "action_type is required" });
-        return;
-      }
-
-      const result = await pool.query(
-        `INSERT INTO agent_actions (session_id, action_type, action_name, input_summary, metadata, started_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`,
-        [
-          sessionId,
-          action_type,
-          action_name ?? null,
-          input_summary ?? null,
-          JSON.stringify(metadata ?? {}),
-          started_at ?? new Date().toISOString(),
-        ]
-      );
-
-      const action = result.rows[0];
-
-      // Look up the session's pod_name for incremental correlation tracking
-      const sessionResult = await pool.query(
-        "SELECT pod_name FROM agent_sessions WHERE id = $1",
-        [sessionId]
-      );
-      const podName = sessionResult.rows[0]?.pod_name ?? null;
-
-      liveStream.notifyActionStarted(action.id, sessionId, action_type, action_name ?? null, podName);
-
-      res.status(201).json({ action });
-    } catch (err) {
-      console.error("Failed to create action:", err);
-      res.status(500).json({ error: "Failed to create action" });
-    }
-  });
-
-  // PATCH /api/actions/:id/end — end an action and trigger correlation
-  router.patch("/actions/:id/end", async (req, res) => {
-    try {
-      const { output_summary } = req.body;
-
-      const result = await pool.query(
-        `UPDATE agent_actions SET ended_at = NOW(), output_summary = COALESCE($2, output_summary)
-         WHERE id = $1 AND ended_at IS NULL
-         RETURNING *`,
-        [req.params.id, output_summary ?? null]
-      );
-
-      if (result.rows.length === 0) {
-        res.status(404).json({ error: "Action not found or already ended" });
-        return;
-      }
-
-      const action = result.rows[0];
-
-      // Trigger correlation (optimistic — may find some events)
-      const correlation = await correlator.correlateAction(action.id);
-
-      liveStream.notifyActionEnded(action.id, action.session_id, action.action_type, action.action_name);
-      liveStream.notifyCorrelation(action.session_id, correlation);
-
-      res.json({ action, correlation });
-    } catch (err) {
-      console.error("Failed to end action:", err);
-      res.status(500).json({ error: "Failed to end action" });
-    }
-  });
-
-  // POST /api/actions/:id/correlate — manually re-correlate an action
-  router.post("/actions/:id/correlate", async (req, res) => {
-    try {
-      const correlation = await correlator.correlateAction(req.params.id);
-      res.json({ correlation });
-    } catch (err) {
-      console.error("Failed to correlate action:", err);
-      res.status(500).json({ error: "Failed to correlate action" });
-    }
-  });
-
-  // GET /api/actions/:id/events — get correlated events for an action
-  router.get("/actions/:id/events", async (req, res) => {
-    try {
-      const result = await pool.query(
-        `SELECT e.*, ec.confidence, ec.correlation_method, ec.signal_scores
-         FROM events e
-         JOIN event_correlations ec ON e.id = ec.event_id
-         WHERE ec.action_id = $1
-         ORDER BY ec.confidence DESC, COALESCE(e.event_time, e.created_at) ASC`,
-        [req.params.id]
-      );
-
-      res.json({ events: result.rows });
-    } catch (err) {
-      console.error("Failed to fetch action events:", err);
-      res.status(500).json({ error: "Failed to fetch action events" });
     }
   });
 
