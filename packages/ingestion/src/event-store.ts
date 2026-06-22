@@ -29,7 +29,11 @@ export const createEventStore = (dbConfig: DBConfig, redisConfig: RedisConfig) =
   const pool = new pg.Pool(dbConfig);
   const redis = new Redis(redisConfig);
   // SPEC_04 Slice 2b: durable stream feeding the streaming correlator (ADR 0002).
-  const streamPublisher = createStreamPublisher(redis);
+  // ioredis' xadd has strict overloads that don't fit the loose StreamRedis
+  // contract; route through `call` (the documented escape hatch for these commands).
+  const streamPublisher = createStreamPublisher({
+    xadd: (...args: (string | number)[]) => redis.call("XADD", ...args),
+  });
 
   redis.on("error", (err: Error) => {
     console.error("Redis pub error:", err.message);
