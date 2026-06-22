@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createStreamingCorrelator, type StreamEvent, type EventScorer } from "../streaming-correlator.js";
+import { extractFilePath } from "../resource.js";
 import type { ActionHints } from "../types.js";
 
 const hints = (): ActionHints => ({
@@ -121,6 +122,48 @@ describe("streaming correlator — windowing", () => {
     expect(c.openActionIds()).toEqual(["a1"]);
     close(c);
     expect(c.openActionIds()).toEqual([]);
+  });
+
+  it("resolves fd→path regardless of stream arrival order (sorts by time before fd resolution)", () => {
+    // The write ARRIVES on the stream before its fd_install (out-of-order), but
+    // its event_time is later. The engine must sort by time before resolveFdPaths,
+    // or the write's path never resolves and its score diverges from the batch path.
+    const enrichedRaw = new Map<number, Record<string, unknown>>();
+    const capture: EventScorer = (event) => {
+      enrichedRaw.set(event.id, event.raw_event);
+      return { event_id: event.id, confidence: 0.5, method: "x", signal_scores: {}, reasons: [] };
+    };
+    const c = createStreamingCorrelator({ scoreEvent: capture });
+    c.openAction("a1", { pod_name: null, agent_pid: 100 }, START);
+    c.ingestEvent(
+      ev({
+        id: 2,
+        function_name: "__arm64_sys_write",
+        event_time: new Date("2026-06-22T00:00:06Z"),
+        raw_event: { process_kprobe: { args: [{ intArg: 3 }, { sizeArg: "12" }] } },
+      })
+    );
+    c.ingestEvent(
+      ev({
+        id: 1,
+        function_name: "fd_install",
+        event_time: new Date("2026-06-22T00:00:05Z"),
+        raw_event: { process_kprobe: { args: [{ intArg: 3 }, { fileArg: { path: "/tmp/x" } }] } },
+      })
+    );
+    close(c);
+    expect(extractFilePath(enrichedRaw.get(2) ?? {})).toBe("/tmp/x");
+  });
+
+  it("attributes an event to every concurrently-open window it matches (same-pid fan-out)", () => {
+    const c = createStreamingCorrelator({ scoreEvent: attributeAll });
+    c.openAction("a1", { pod_name: null, agent_pid: 100 }, START);
+    c.openAction("a2", { pod_name: null, agent_pid: 100 }, START);
+    c.ingestEvent(ev({ id: 1 }));
+    const t1 = c.closeAction({ action_id: "a1", session_id: "s", action_type: "x", ended_at: END, hints: hints() });
+    const t2 = c.closeAction({ action_id: "a2", session_id: "s", action_type: "y", ended_at: END, hints: hints() });
+    expect(t1?.attributed).toHaveLength(1);
+    expect(t2?.attributed).toHaveLength(1);
   });
 
   it("summary bands count high/medium/low by the configured thresholds", () => {

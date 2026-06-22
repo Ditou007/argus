@@ -20,7 +20,13 @@ const trace = (): CorrelatedTrace => ({
         raw_event: { process_kprobe: { function_name: "tcp_connect" } },
         pod_name: null,
       },
-      scored: { event_id: 1, confidence: 0.91, method: "network_destination", signal_scores: { network_destination: 0.91 }, reasons: [] },
+      scored: {
+        event_id: 1,
+        confidence: 0.91,
+        method: "network_destination",
+        signal_scores: { network_destination: 0.91 },
+        reasons: ["dst 1.1.1.1 matches expected egress"],
+      },
     },
   ],
   summary: {
@@ -57,25 +63,32 @@ describe("toTraceRows", () => {
     });
   });
 
-  it("serializes signal_scores and raw_event to JSON strings", () => {
+  it("serializes signal_scores, reasons, and raw_event to JSON strings (forensic narrative travels)", () => {
     const [row] = toTraceRows(trace());
     expect(JSON.parse(row.signal_scores)).toEqual({ network_destination: 0.91 });
+    expect(JSON.parse(row.reasons)).toEqual(["dst 1.1.1.1 matches expected egress"]);
     expect(JSON.parse(row.raw_event).process_kprobe.function_name).toBe("tcp_connect");
   });
 
-  it("coerces null binary/function and missing event_time to ClickHouse-safe defaults", () => {
+  it("coerces null binary/function to '' and falls back event_time to the ingest time", () => {
     const t = trace();
     const rows = toTraceRows({
       ...t,
       attributed: [
         {
           ...t.attributed[0],
-          event: { ...t.attributed[0].event, process_binary: null, function_name: null, event_time: null },
+          event: {
+            ...t.attributed[0].event,
+            process_binary: null,
+            function_name: null,
+            event_time: null,
+            created_at: new Date("2026-06-22T00:00:09Z"),
+          },
         },
       ],
     });
     expect(rows[0].process_binary).toBe("");
     expect(rows[0].function_name).toBe("");
-    expect(rows[0].event_time).toBe("");
+    expect(rows[0].event_time).toBe("2026-06-22T00:00:09.000Z");
   });
 });

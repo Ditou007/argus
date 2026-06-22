@@ -19,6 +19,7 @@ export const CORRELATED_TRACES_DDL = `CREATE TABLE IF NOT EXISTS ${CORRELATED_TR
   confidence     Float64,
   method         LowCardinality(String),
   signal_scores  String,
+  reasons        String,
   raw_event      String,
   attributed_at  DateTime DEFAULT now()
 )
@@ -37,12 +38,15 @@ export interface TraceRow {
   readonly confidence: number;
   readonly method: string;
   readonly signal_scores: string;
+  readonly reasons: string;
   readonly raw_event: string;
 }
 
 /**
  * Flatten a correlated trace into ClickHouse rows (one per attributed event),
- * coercing nullable fields to ClickHouse-safe defaults.
+ * coercing nullable fields to ClickHouse-safe defaults. The per-signal `reasons`
+ * (the audit narrative) travel with the trace; `event_time` falls back to the
+ * ingest time so trace ordering never collapses to empty.
  * @function toTraceRows
  * @param trace - the explained trace produced by the streaming correlator
  * @returns the rows to insert into correlated_traces
@@ -55,9 +59,10 @@ export const toTraceRows = (trace: CorrelatedTrace): TraceRow[] =>
     process_pid: event.process_pid,
     process_binary: event.process_binary ?? "",
     function_name: event.function_name ?? "",
-    event_time: event.event_time ? event.event_time.toISOString() : "",
+    event_time: (event.event_time ?? event.created_at).toISOString(),
     confidence: scored.confidence,
     method: scored.method,
     signal_scores: JSON.stringify(scored.signal_scores),
+    reasons: JSON.stringify(scored.reasons),
     raw_event: JSON.stringify(event.raw_event),
   }));

@@ -130,10 +130,18 @@ export const createStreamingCorrelator = (
 
     const lo = open.started_at.getTime() - WINDOW_TOLERANCE_MS;
     const hi = req.ended_at.getTime() + WINDOW_TOLERANCE_MS;
-    const candidates = [...open.events.values()].filter((event) => {
-      const time = effectiveTime(event);
-      return time >= lo && time <= hi;
-    });
+    // Sort by effective time before fd-path resolution: resolveFdPaths is
+    // order-dependent (an fd_install must be walked before the sys_write that
+    // uses it), and stream arrival order is not guaranteed to be time order.
+    // This mirrors the batch correlator's `ORDER BY COALESCE(event_time, created_at)`.
+    // No per-window LIMIT (the batch path's LIMIT 500 can truncate a busy window
+    // and undercount); windows are bounded instead by closing on action-end.
+    const candidates = [...open.events.values()]
+      .filter((event) => {
+        const time = effectiveTime(event);
+        return time >= lo && time <= hi;
+      })
+      .sort((a, b) => effectiveTime(a) - effectiveTime(b));
 
     const resolvedPaths = resolveFdPaths(candidates);
     const window: ActionWindow = { started_at: open.started_at, ended_at: req.ended_at };
