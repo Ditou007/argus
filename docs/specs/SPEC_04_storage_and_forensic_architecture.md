@@ -146,12 +146,19 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Test:* `clickhouse-store` insert → count query > 0 (fake-client unit + compose-gated integration).
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* none. *Touches:* `docker-compose.yml`, `packages/ingestion/src/clickhouse-store.ts` (new, injectable client), `config.ts`, `index.ts`; `@clickhouse/client` dep.
-- [ ] **Slice 2 — Streaming correlator: consume the stream, write `correlated_traces` (T2a).** ⚠ biggest slice — split if it overflows PR-size.
-  - *Delivers:* a background consumer of the Redis event stream maintains open declared-action windows, attributes syscalls **incrementally** (reusing existing scoring signals **unchanged**), and writes the explained trace to ClickHouse `correlated_traces`. On startup it **rehydrates open windows + their events from ClickHouse** and resumes (no lost correlations across restarts). PG firehose + on-demand path stay intact (safety).
-  - *Acceptance:* the explained trace lands in `correlated_traces`; the SPEC_03 fast-op fixture that previously raced now correlates deterministically; a restart mid-session resumes open windows from ClickHouse.
-  - *Test:* event-stream + declared action → trace produced; previously-racing fast-op fixture attributes correctly; restart-rehydration test.
+- [x] **Slice 2a — Streaming attribution engine + `correlated_traces` schema (T2a, pure).**
+  - *Delivers:* a pure streaming window manager that, reusing the existing scoring registry **unchanged**, **accumulates** events into open declared-action windows as they arrive and runs the existing scoring at **action-close** over the accumulated set — fixing the action-end ingestion-lag race (events are captured as they stream, not queried at end) while keeping scoring identical to the batch path. Plus the ClickHouse `correlated_traces` DDL + pure trace-row mapping.
+  - *Design note:* attribution is incremental (accumulate-as-arrive); **scoring is finalized at close** with the real `{started_at, ended_at}` window, so SPEC_01/02 baselines are unchanged by construction. The race is fixed by accumulation, not by changing the score.
+  - *Acceptance:* events fed in stream order are attributed to the matching open window; a "fast-op" event that a batch-at-end query would miss (not yet in the store at close) **is** attributed because it was accumulated when it streamed in; the produced trace maps to a `correlated_traces` row.
+  - *Test:* window manager unit tests (scope/pid+pod + time matching, accumulate→close→trace, the no-race fast-op case); `toTraceRow` pure-mapping test.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 1.
+- [ ] **Slice 2b — Wire the engine to the live stream + persist + rehydrate (T2a).**
+  - *Delivers:* a background consumer subscribes to the Redis event stream, opens windows on action-create, accumulates streamed events, closes on action-end, and **persists the explained trace to ClickHouse `correlated_traces`**. On startup it **rehydrates open windows from ClickHouse** and resumes. PG firehose + the on-demand path stay intact (cut in Slice 3).
+  - *Acceptance:* a live declared action + streamed events → a trace row lands in `correlated_traces`; a restart mid-session resumes open windows from ClickHouse.
+  - *Test:* compose-gated integration (stream → trace persisted); restart-rehydration test.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 2a.
 - [ ] **Slice 3 — Findings → Postgres + cut Postgres off the firehose (T2b).**
   - *Delivers:* streaming correlator writes only sessions/actions/correlations/unexplained findings to Postgres; ingestion's Postgres firehose write is **removed** (ClickHouse-only); the on-demand read path (`routes/sessions.ts`) sources candidate events from ClickHouse.
   - *Acceptance:* during a capture, Postgres `events` gets **0 new rows** while ClickHouse `events` grows; findings still land in Postgres; on-demand correlation scores match the streaming path (SPEC_01/02 baselines unchanged).
