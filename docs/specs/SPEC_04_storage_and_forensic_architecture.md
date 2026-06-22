@@ -184,12 +184,18 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Test:* short-TTL expiry assertion (raw expires, traces + findings persist).
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 1.
-- [ ] **Slice 5 — Forensic query/replay surface (T4).**
-  - *Delivers:* an API endpoint serves a session's full correlated trace (declared actions + attributed syscalls + verdict) from ClickHouse; the dashboard renders it for audit/replay.
-  - *Acceptance:* the endpoint returns the full trace shape for a known session; the dashboard renders it.
-  - *Test:* endpoint returns trace for a seeded session; light UI render check.
+- [x] **Slice 5a — Forensic replay API (T4).**
+  - *Delivers:* `GET /api/sessions/:id/trace` serves a session's full correlated trace (declared actions + attributed events + verdict, incl. `reasons`/`signal_scores`) from ClickHouse, via a `trace-reader` (parameterized query — session id never interpolated). Reordered ahead of Slice 3 (depends only on traces in ClickHouse, done at 2c).
+  - *Acceptance:* the endpoint returns the trace rows for a session (`{session_id, count, events}`); empty session → `count: 0`; reader failure → 500 without leaking detail.
+  - *Test:* `trace-reader` unit (parameterized query + parse) + `trace.http` supertest (200/empty/500); live-verified read-back against real ClickHouse.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
-  - *Depends on:* Slices 2, 3.
+  - *Depends on:* Slice 2c.
+- [ ] **Slice 5b — Forensic replay UI (T4).**
+  - *Delivers:* the dashboard renders the `/trace` endpoint for audit/replay ("what did the agent actually do") — a session's declared actions with their attributed events + verdict.
+  - *Acceptance:* the dashboard shows a session's correlated trace.
+  - *Test:* light UI render check.
+  - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
+  - *Depends on:* Slice 5a.
 - [ ] **Slice 6 — Migration + cost validation (T5).**
   - *Delivers:* demo data cutover; a recorded measurement of ClickHouse storage/query cost vs. the ~1.4M-row Postgres-firehose baseline (the documented "store the gap" win); SPEC_01/02 correlation tests pass **unmodified**.
   - *Acceptance:* recorded check shows Postgres row growth ∝ findings (orders of magnitude below captured syscall count); SPEC_01/02 baselines unchanged.

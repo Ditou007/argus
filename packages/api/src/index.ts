@@ -8,8 +8,10 @@ import { createSessionsRouter } from "./routes/sessions.js";
 import { createActionRouter } from "./routes/session-actions.js";
 import { createUnexplainedRouter } from "./routes/unexplained.js";
 import { createLiveStream } from "./ws/live-stream.js";
+import { createTraceRouter } from "./routes/trace.js";
 import { createClickHouseWriter } from "./correlation/clickhouse-writer.js";
 import { createTraceStore } from "./correlation/trace-store.js";
+import { createTraceReader } from "./correlation/trace-reader.js";
 import { createStreamingService } from "./correlation/streaming-service.js";
 import { createStreamConsumer } from "./correlation/stream-consumer.js";
 import { rehydrateWindows } from "./correlation/rehydrate.js";
@@ -38,6 +40,7 @@ const liveStream = createLiveStream(server, pool, { redis: config.redis });
 // SPEC_04: streaming correlator — consume the durable event stream, attribute to
 // open action windows, and persist correlated traces to ClickHouse (ADR 0002).
 const traceStore = createTraceStore(createClickHouseWriter(config.clickhouse));
+const traceReader = createTraceReader(config.clickhouse);
 const streaming = createStreamingService({ traceStore });
 const streamRedis = new Redis(config.redis);
 streamRedis.on("error", (err: Error) => console.error("Stream consumer redis error:", err.message));
@@ -69,6 +72,7 @@ app.use("/api/health", createHealthRouter(pool));
 app.use("/api/events", createEventsRouter(pool));
 app.use("/api/sessions", createSessionsRouter(pool, liveStream));
 app.use("/api/sessions", createActionRouter(pool, liveStream, streaming));
+app.use("/api/sessions", createTraceRouter(traceReader));
 app.use("/api/sessions", createUnexplainedRouter(pool));
 
 const shutdown = async () => {
@@ -76,6 +80,7 @@ const shutdown = async () => {
   streamConsumer.stop();
   await streamRedis.quit().catch(() => {/* best effort */});
   await traceStore.close().catch(() => {/* best effort */});
+  await traceReader.close().catch(() => {/* best effort */});
   await liveStream.close();
   server.close();
   await pool.end();
