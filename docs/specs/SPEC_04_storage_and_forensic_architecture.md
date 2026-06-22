@@ -159,9 +159,9 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
   - *Test:* unit (publisher XADD payload; `parseStreamEvent` round-trips a published event; trace-store persists via a fake CH client); compose-gated integration (real Redis Stream `XADD`/`XREAD` + real ClickHouse → trace row).
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 2a.
-- [ ] **Slice 2c — Live wiring: consumer service + action-lifecycle hooks (T2a).**
-  - *Delivers:* a streaming-correlator service in the running API reads `argus:events:stream` via a **consumer group** (`XREADGROUP`, ack), driving `ingestEvent`; `openAction` on action-create and `closeAction` (parse hints + DNS, persist trace) on action-end are hooked into `packages/api/src/routes/sessions.ts`; started in `index.ts`. PG firehose + on-demand `correlateAction` stay intact (cut in Slice 3).
-  - *Acceptance:* a real declared action + streamed events through the running API → a trace row in `correlated_traces`; events acked (at-least-once, no drops).
+- [x] **Slice 2c — Live wiring: consumer service + action-lifecycle hooks (T2a).**
+  - *Delivers:* a streaming-correlator service in the running API reads `argus:events:stream` via a **consumer group** (`XREADGROUP`, ack), driving `ingestEvent`; `openAction` on action-create and `closeAction` (parse hints + DNS, persist trace) on action-end are hooked into `packages/api/src/routes/session-actions.ts` (the action routes, extracted from `sessions.ts`); started in `index.ts`. PG firehose + on-demand `correlateAction` stay intact (cut in Slice 3). Rehydrate-on-restart is **deferred to Slice 2d**.
+  - *Acceptance:* a real declared action + streamed events through the running API → a trace row in `correlated_traces`; events acked (at-least-once for entries added after the group exists, into windows already open; full rehydrate in 2d).
   - *Test:* unit (service drives open/ingest/close + persist with fakes; hint parsing); compose-gated integration through the API lifecycle.
   - *DoD:* test green · `keel eval` green · spec/docs updated · within PR-size budget.
   - *Depends on:* Slice 2b.

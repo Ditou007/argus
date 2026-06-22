@@ -1,5 +1,6 @@
 import "dotenv/config";
 
+/** API service configuration, resolved from environment with dev defaults. */
 export const config = {
   port: parseInt(process.env.API_PORT ?? "3001", 10),
   database: {
@@ -13,5 +14,13 @@ export const config = {
     host: process.env.REDIS_HOST ?? "localhost",
     // REDIS_PORT is auto-set by K8s to "tcp://..." — use REDIS_PORT_NUMBER instead
     port: parseInt(process.env.REDIS_PORT_NUMBER ?? "6379", 10),
+  },
+  clickhouse: {
+    url:
+      process.env.CLICKHOUSE_URL ??
+      `http://${process.env.CLICKHOUSE_HOST ?? "localhost"}:${process.env.CLICKHOUSE_PORT ?? "8123"}`,
+    database: process.env.CLICKHOUSE_DB ?? "argus",
+    username: process.env.CLICKHOUSE_USER ?? "argus",
+    password: process.env.CLICKHOUSE_PASSWORD ?? "argus_dev",
   },
 } as const;

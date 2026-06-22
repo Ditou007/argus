@@ -36,10 +36,12 @@ dashboard/WS.**
 - The streaming correlator reads the stream via a **consumer group** (`XREADGROUP`): at-least-once
   delivery, per-consumer offsets, backpressure, and **replay of unacked entries on restart**.
 - Open/close of declared-action windows is driven in-process from the action lifecycle
-  (`packages/api/src/routes/sessions.ts`); `ingestEvent` is driven by the stream consumer.
-- **Rehydrate-on-restart** (the ADR 0001 / SPEC_04 requirement) is satisfied by: the consumer group
-  redelivering unacked stream entries **plus** rebuilding open windows from Postgres
-  (`agent_actions WHERE ended_at IS NULL`) and their accumulated events from ClickHouse.
+  (`packages/api/src/routes/session-actions.ts`); `ingestEvent` is driven by the stream consumer.
+- **Rehydrate-on-restart** (the ADR 0001 / SPEC_04 requirement, **deferred to Slice 2d**) will be
+  satisfied by: the consumer group redelivering unacked stream entries **plus** rebuilding open
+  windows from Postgres (`agent_actions WHERE ended_at IS NULL`) and their accumulated events from
+  ClickHouse. Slice 2c ships the consumer + wiring but **not** rehydrate; until 2d, in-flight windows
+  are lost on restart.
 
 ## Options considered
 
@@ -51,8 +53,9 @@ dashboard/WS.**
 
 ## Consequences
 
-- **Positive:** no dropped events (durable + acked); replayable; rehydrate falls out of consumer-group
-  offsets; no new infrastructure; the dashboard/WS path is unchanged; the firehose stays off Postgres.
+- **Positive:** at-least-once delivery (durable + acked) for entries added after the group exists,
+  into windows already open; replayable; rehydrate falls out of consumer-group offsets (Slice 2d);
+  no new infrastructure; the dashboard/WS path is unchanged; the firehose stays off Postgres.
 - **Costs / risks:** more Redis memory/bandwidth (the stream carries full events — bounded with
   `MAXLEN ~` capping the stream length, since ClickHouse is the durable record, not Redis); a second
   publish per event in ingestion; consumer-group plumbing (ack/claim) to get right. The stream is a
@@ -60,5 +63,6 @@ dashboard/WS.**
 
 ## Follow-ups
 
-SPEC_04 Slice 2b implements the stream publish + consumer + trace persistence; Slice 2c implements
-full rehydrate-on-restart. Stream `MAXLEN` capping and dead-consumer claim are tuned there.
+SPEC_04 Slice 2b ships the stream publish + parser + trace-store; Slice 2c wires the consumer group
++ action-lifecycle hooks (in `session-actions.ts`) + trace persistence into the running API; Slice 2d
+implements full rehydrate-on-restart. Stream `MAXLEN` capping and dead-consumer claim are tuned there.
