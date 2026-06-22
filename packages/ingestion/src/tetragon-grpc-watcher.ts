@@ -131,6 +131,47 @@ const toTetragonEvent = (response: Record<string, unknown>): TetragonEvent | nul
   return null;
 };
 
+/** The minimal readable-stream surface the backpressure pump drives. */
+export interface PausableStream {
+  on: (event: "data", listener: (data: unknown) => void) => void;
+  pause: () => void;
+  resume: () => void;
+}
+
+/**
+ * Wire a readable stream's `data` events to an async handler WITH backpressure:
+ * pause the stream while each handler runs and resume only once it settles, so a
+ * slow consumer (per-event DB write) can never pile up unbounded in-flight
+ * handlers in the microtask queue — the gRPC analogue of the file-watcher OOM
+ * (finding #5). `isRunning` gates resume so a stopped watcher doesn't restart flow.
+ * @function pumpWithBackpressure
+ * @param stream - the readable stream (gRPC server-stream, or a fake in tests)
+ * @param handle - async per-event handler (must not reject; errors handled inside)
+ * @param isRunning - whether the watcher is still active
+ */
+export const pumpWithBackpressure = (
+  stream: PausableStream,
+  handle: (data: unknown) => Promise<void>,
+  isRunning: () => boolean
+): void => {
+  stream.on("data", (data: unknown) => {
+    if (!isRunning()) return;
+    stream.pause();
+    void handle(data).finally(() => {
+      if (isRunning()) stream.resume();
+    });
+  });
+};
+
+/**
+ * Build the gRPC Tetragon watcher (K8s mode): connects to the Tetragon
+ * GetEvents server stream, converts each event, and feeds `onEvent` with
+ * backpressure (see {@link pumpWithBackpressure}). Reconnects with exponential
+ * backoff on error/end.
+ * @function createGrpcWatcher
+ * @param options - gRPC address + the async onEvent sink
+ * @returns the watcher API: start, stop
+ */
 export const createGrpcWatcher = (options: GrpcWatcherOptions) => {
   const { grpcAddress, onEvent } = options;
   let running = false;
@@ -172,8 +213,10 @@ export const createGrpcWatcher = (options: GrpcWatcherOptions) => {
       denyList: [],
     }) as grpc.ClientReadableStream<unknown>;
 
-    call.on("data", async (response: unknown) => {
-      if (!running) return;
+    // Backpressure: pause the stream while each event is written, so a slow DB
+    // can't pile up unbounded in-flight handlers (the OOM class fixed for the
+    // file watcher in finding #5).
+    const handleEvent = async (response: unknown): Promise<void> => {
       try {
         const event = toTetragonEvent(response as Record<string, unknown>);
         if (event) {
@@ -186,7 +229,8 @@ export const createGrpcWatcher = (options: GrpcWatcherOptions) => {
       } catch (err) {
         console.error("Error processing gRPC event:", err);
       }
-    });
+    };
+    pumpWithBackpressure(call, handleEvent, () => running);
 
     call.on("error", (err: Error) => {
       if (!running) return;
