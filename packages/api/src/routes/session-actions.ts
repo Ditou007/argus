@@ -17,13 +17,17 @@ interface ActionDeps {
 
 const describeError = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-// The session's correlation scope (pod when present, else host PID).
+// The session's correlation scope (pod when present, else host PID). Returns
+// null when the session row is absent — callers then skip streaming work rather
+// than fabricate a PID-0 scope (which would mis-attribute to the kernel idle task).
 const sessionScope = async (
   pool: pg.Pool,
   sessionId: string
-): Promise<{ pod_name: string | null; agent_pid: number }> => {
+): Promise<{ pod_name: string | null; agent_pid: number } | null> => {
   const result = await pool.query("SELECT pod_name, agent_pid FROM agent_sessions WHERE id = $1", [sessionId]);
-  return { pod_name: result.rows[0]?.pod_name ?? null, agent_pid: result.rows[0]?.agent_pid ?? 0 };
+  const row = result.rows[0];
+  if (!row) return null;
+  return { pod_name: row.pod_name ?? null, agent_pid: row.agent_pid };
 };
 
 // Normalize the request body into positional INSERT values (keeps the handler
@@ -55,10 +59,12 @@ const createAction = (deps: ActionDeps): RequestHandler => async (req, res) => {
     const action = result.rows[0];
 
     const scope = await sessionScope(deps.pool, sessionId);
-    deps.liveStream.notifyActionStarted(action.id, sessionId, action_type, action_name ?? null, scope.pod_name);
+    deps.liveStream.notifyActionStarted(action.id, sessionId, action_type, action_name ?? null, scope?.pod_name ?? null);
     // SPEC_04: open a streaming-correlation window so events are accumulated as
-    // they stream in (no end-of-action batch-query race).
-    deps.streaming?.openAction(action.id, scope, new Date(action.started_at));
+    // they stream in (no end-of-action batch-query race). Skip if scope is unresolved.
+    if (scope) {
+      deps.streaming?.openAction(action.id, scope, new Date(action.started_at));
+    }
 
     res.status(201).json({ action });
   } catch (err) {
@@ -73,16 +79,18 @@ const finalizeStreamingTrace = (deps: ActionDeps, action: Record<string, unknown
   // Additive: a streaming/ClickHouse failure must not break ending the action.
   sessionScope(deps.pool, String(action.session_id))
     .then((scope) =>
-      streaming.closeAction({
-        action_id: String(action.id),
-        session_id: String(action.session_id),
-        action_type: String(action.action_type),
-        action_name: (action.action_name as string | null) ?? null,
-        input_summary: (action.input_summary as string | null) ?? null,
-        agent_pid: scope.agent_pid,
-        pod_name: scope.pod_name,
-        ended_at: new Date(action.ended_at as string),
-      })
+      scope
+        ? streaming.closeAction({
+            action_id: String(action.id),
+            session_id: String(action.session_id),
+            action_type: String(action.action_type),
+            action_name: (action.action_name as string | null) ?? null,
+            input_summary: (action.input_summary as string | null) ?? null,
+            agent_pid: scope.agent_pid,
+            pod_name: scope.pod_name,
+            ended_at: new Date(action.ended_at as string),
+          })
+        : null
     )
     .catch((err: unknown) => console.error("Streaming trace persist failed:", describeError(err)));
 };
