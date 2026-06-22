@@ -140,7 +140,7 @@ sampling in v1** — TTL plus the columnar store handles cost; sampling is a lat
 
 ## Plan (sliced, dependency-ordered — `/keel:build` ticks these `[ ]` → `[x]`)
 
-- [ ] **Slice 1 — ClickHouse service + raw-event dual-write (T1).**
+- [x] **Slice 1 — ClickHouse service + raw-event dual-write (T1).**
   - *Delivers:* `docker compose up` brings up ClickHouse; ingestion writes each raw Tetragon event to a new ClickHouse `events` table **in addition to** Postgres (transient dual-write — nothing downstream breaks).
   - *Acceptance:* after a capture, `SELECT count() FROM events` in ClickHouse > 0; the Postgres path is unchanged.
   - *Test:* `clickhouse-store` insert → count query > 0 (fake-client unit + compose-gated integration).

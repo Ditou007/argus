@@ -2,6 +2,7 @@ import pg from "pg";
 import { Redis } from "ioredis";
 import type { TetragonEvent } from "./types.js";
 import { createMigrationRunner } from "./migrations/runner.js";
+import { toEventFields } from "./event-fields.js";
 
 interface DBConfig {
   host: string;
@@ -16,34 +17,13 @@ interface RedisConfig {
   port: number;
 }
 
-const getEventType = (event: TetragonEvent): string => {
-  if (event.process_exec) return "process_exec";
-  if (event.process_exit) return "process_exit";
-  if (event.process_kprobe) return "process_kprobe";
-  return "unknown";
-};
-
-const getProcess = (event: TetragonEvent) =>
-  event.process_exec?.process ??
-  event.process_exit?.process ??
-  event.process_kprobe?.process ??
-  null;
-
-// Extract the actual event timestamp from the Tetragon event
-const getEventTime = (event: TetragonEvent): string | null => {
-  // Prefer the top-level time field — this is when the syscall happened
-  // (process.start_time is when the process started, NOT when the event fired)
-  if (event.time && typeof event.time === "string" && event.time !== "[object Object]") {
-    return event.time;
-  }
-  // Fall back to process start_time
-  const proc = getProcess(event);
-  if (proc?.start_time && typeof proc.start_time === "string") {
-    return proc.start_time;
-  }
-  return null;
-};
-
+/**
+ * Build the Postgres-backed event store with a Redis live-stream publisher.
+ * @function createEventStore
+ * @param dbConfig - Postgres connection settings
+ * @param redisConfig - Redis connection settings for live-stream publish
+ * @returns the store API: initialize (migrations), insert (one event), close, and the pool
+ */
 export const createEventStore = (dbConfig: DBConfig, redisConfig: RedisConfig) => {
   const pool = new pg.Pool(dbConfig);
   const redis = new Redis(redisConfig);
@@ -59,39 +39,36 @@ export const createEventStore = (dbConfig: DBConfig, redisConfig: RedisConfig) =
   };
 
   const insert = async (event: TetragonEvent) => {
-    const eventType = getEventType(event);
-    const proc = getProcess(event);
-    const podName = proc?.pod?.name ?? null;
-    const functionName = event.process_kprobe?.function_name ?? null;
+    const fields = toEventFields(event);
 
     const result = await pool.query(
       `INSERT INTO events (event_type, process_binary, process_pid, function_name, pod_name, pod_namespace, container_id, event_time, raw_event)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
-        eventType,
-        proc?.binary ?? null,
-        proc?.pid ?? null,
-        functionName,
-        podName,
-        proc?.pod?.namespace ?? null,
-        proc?.pod?.container?.id ?? null,
-        getEventTime(event),
+        fields.event_type,
+        fields.process_binary,
+        fields.process_pid,
+        fields.function_name,
+        fields.pod_name,
+        fields.pod_namespace,
+        fields.container_id,
+        fields.event_time,
         JSON.stringify(event),
       ]
     );
 
     // Publish lightweight notification to Redis for real-time streaming
     const eventId = result.rows[0]?.id;
-    if (eventId && podName) {
+    if (eventId && fields.pod_name) {
       redis.publish("argus:events", JSON.stringify({
         id: eventId,
-        event_type: eventType,
-        pod_name: podName,
-        process_pid: proc?.pid ?? null,
-        process_binary: proc?.binary ?? null,
-        function_name: functionName,
-        event_time: getEventTime(event),
+        event_type: fields.event_type,
+        pod_name: fields.pod_name,
+        process_pid: fields.process_pid,
+        process_binary: fields.process_binary,
+        function_name: fields.function_name,
+        event_time: fields.event_time,
       })).catch(() => {/* non-critical */});
     }
   };

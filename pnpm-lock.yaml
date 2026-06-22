@@ -168,6 +168,9 @@ importers:
 
   packages/ingestion:
     dependencies:
+      '@clickhouse/client':
+        specifier: ^1.7.0
+        version: 1.21.0
       '@grpc/grpc-js':
         specifier: ^1.14.3
         version: 1.14.3
@@ -244,6 +247,13 @@ packages:
   '@babel/types@7.29.7':
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
+
+  '@clickhouse/client-common@1.21.0':
+    resolution: {integrity: sha512-UjvA32aaLKbQ5U735qAGdzohrOrfU8zFoOWIOWorWQk+7UzHZxq6pf4Uh/wQ08zAMb9cmkd9h9N1FV8zP8UCOg==}
+
+  '@clickhouse/client@1.21.0':
+    resolution: {integrity: sha512-HJLHX60clPFV4ZYjhd9Radgfqkl0MX6T4GDaS6CK4K2cpMWW4uIDPzXjueIVJh+LRVt1pi7kJKn8BWjmbGAlEA==}
+    engines: {node: '>=16'}
 
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
@@ -2646,6 +2656,12 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@clickhouse/client-common@1.21.0': {}
+
+  '@clickhouse/client@1.21.0':
+    dependencies:
+      '@clickhouse/client-common': 1.21.0
 
   '@colors/colors@1.5.0':
     optional: true

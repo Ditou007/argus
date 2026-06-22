@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..", "..", "..");
 
+/** Ingestion service configuration, resolved from environment with dev defaults. */
 export const config = {
   database: {
     host: process.env.DB_HOST ?? "localhost",
@@ -17,6 +18,14 @@ export const config = {
   redis: {
     host: process.env.REDIS_HOST ?? "localhost",
     port: parseInt(process.env.REDIS_PORT_NUMBER ?? "6379", 10),
+  },
+  clickhouse: {
+    url:
+      process.env.CLICKHOUSE_URL ??
+      `http://${process.env.CLICKHOUSE_HOST ?? "localhost"}:${process.env.CLICKHOUSE_PORT ?? "8123"}`,
+    database: process.env.CLICKHOUSE_DB ?? "argus",
+    username: process.env.CLICKHOUSE_USER ?? "argus",
+    password: process.env.CLICKHOUSE_PASSWORD ?? "argus_dev",
   },
   tetragon: {
     // File mode (docker-compose): tail a JSON log file
