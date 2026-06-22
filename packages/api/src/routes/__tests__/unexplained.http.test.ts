@@ -23,8 +23,11 @@ const NO_ACTIONS = { rows: [] };
 
 describe("GET /api/sessions/:id/unexplained (HTTP contract)", () => {
   it("200s with a coverage + risk-ranked triage envelope", async () => {
+    // Query order is now: session → correlations → actions → events (streamed).
     const pool = fakePool([
       { rows: [SESSION] },
+      { rows: [{ event_id: 1, confidence: 0.9 }, { event_id: 2, confidence: 0.85 }] }, // 98, 99 uncorrelated
+      NO_ACTIONS,
       {
         rows: [
           { id: 1, event_type: "process_kprobe", function_name: "fd_install", process_binary: "python", raw_event: {} },
@@ -33,8 +36,6 @@ describe("GET /api/sessions/:id/unexplained (HTTP contract)", () => {
           { id: 99, event_type: "process_kprobe", function_name: "fd_install", process_binary: "cat", raw_event: sshRead },
         ],
       },
-      { rows: [{ event_id: 1, confidence: 0.9 }, { event_id: 2, confidence: 0.85 }] }, // 98, 99 uncorrelated
-      NO_ACTIONS,
     ]);
     const res = await request(appWith(pool)).get("/api/sessions/s1/unexplained");
     expect(res.status).toBe(200);
@@ -62,7 +63,8 @@ describe("GET /api/sessions/:id/unexplained (HTTP contract)", () => {
   });
 
   it("a zero-event session reports full coverage and an empty feed", async () => {
-    const pool = fakePool([{ rows: [SESSION] }, { rows: [] }, { rows: [] }, NO_ACTIONS]);
+    // session → correlations(none) → actions(none) → events(none)
+    const pool = fakePool([{ rows: [SESSION] }, { rows: [] }, NO_ACTIONS, { rows: [] }]);
     const res = await request(appWith(pool)).get("/api/sessions/s1/unexplained");
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(0);
