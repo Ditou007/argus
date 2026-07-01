@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Argus">
+  <title>Argus</title>
+  <rect width="100" height="100" rx="22" fill="#0C1519"/>
+  <circle cx="50" cy="50" r="30" fill="none" stroke="#E9A23C" stroke-width="5.5"/>
+  <polygon points="66,50 58,64 42,64 34,50 42,36 58,36" fill="none" stroke="#E9A23C" stroke-width="2.6" stroke-linejoin="round"/>
+  <g stroke="#E9A23C" stroke-width="2" stroke-linecap="round">
+    <line x1="66" y1="50" x2="58" y2="36"/>
+    <line x1="58" y1="64" x2="66" y2="50"/>
+    <line x1="42" y1="64" x2="58" y2="64"/>
+    <line x1="34" y1="50" x2="42" y2="64"/>
+  </g>
+  <circle cx="50" cy="50" r="4" fill="#E9A23C"/>
+</svg>

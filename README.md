@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/argus-mark.svg">
+  <img alt="Argus" src="docs/assets/argus-mark-light.svg" width="104" height="104">
+</picture>
+
 # Argus
 
 ### The flight recorder for AI agents.
